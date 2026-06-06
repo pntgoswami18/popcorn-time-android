@@ -6,7 +6,9 @@ import com.popcorntime.android.data.db.AppDatabase
 import com.popcorntime.android.data.db.dao.BookmarkedDao
 import com.popcorntime.android.data.db.dao.WatchedDao
 import com.popcorntime.android.data.repository.MovieRepositoryImpl
+import com.popcorntime.android.data.repository.ShowRepositoryImpl
 import com.popcorntime.android.domain.repository.MovieRepository
+import com.popcorntime.android.domain.repository.ShowRepository
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -33,7 +35,9 @@ object DatabaseModule {
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class RepositoryModule {
-    @Binds
-    @Singleton
+    @Binds @Singleton
     abstract fun bindMovieRepository(impl: MovieRepositoryImpl): MovieRepository
+
+    @Binds @Singleton
+    abstract fun bindShowRepository(impl: ShowRepositoryImpl): ShowRepository
 }

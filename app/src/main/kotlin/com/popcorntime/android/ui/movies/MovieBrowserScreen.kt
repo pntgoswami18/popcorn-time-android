@@ -26,6 +26,7 @@ import coil.compose.AsyncImage
 import com.popcorntime.android.domain.model.ALL_GENRES
 import com.popcorntime.android.domain.model.Movie
 import com.popcorntime.android.domain.model.SortOption
+import com.popcorntime.android.ui.movies.MovieCache
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -220,7 +221,10 @@ private fun MovieGrid(
                 movie = movie,
                 isWatched = movie.imdbId in watchedIds,
                 isBookmarked = movie.imdbId in bookmarkedIds,
-                onClick = { onMovieClick(movie.imdbId) },
+                onClick = {
+                    MovieCache.put(movie)   // seed cache before navigating
+                    onMovieClick(movie.imdbId)
+                },
                 onBookmarkClick = { onBookmarkClick(movie.imdbId) },
             )
         }

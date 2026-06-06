@@ -7,9 +7,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
-import androidx.navigation.compose.rememberNavController
 import com.google.accompanist.systemuicontroller.rememberSystemUiController
-import com.popcorntime.android.ui.navigation.PopcornNavGraph
+import com.popcorntime.android.ui.main.MainScreen
 import com.popcorntime.android.ui.theme.PopcornTimeTheme
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -26,7 +25,7 @@ class MainActivity : ComponentActivity() {
                     darkIcons = false,
                 )
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    PopcornNavGraph(navController = rememberNavController())
+                    MainScreen()
                 }
             }
         }
