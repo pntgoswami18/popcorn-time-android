@@ -48,6 +48,8 @@ class TorrentEngine @Inject constructor(
     val state: StateFlow<StreamState> = _state.asStateFlow()
 
     private var currentHandle: TorrentHandle? = null
+    // Track the active monitor job so we can cancel it cleanly on stopCurrent()
+    private var monitorJob: kotlinx.coroutines.Job? = null
 
     // Minimum buffered percentage before declaring Ready (mirrors desktop's readiness check)
     private val BUFFER_THRESHOLD = 0.03f  // 3% of file
@@ -68,10 +70,10 @@ class TorrentEngine @Inject constructor(
     }
 
     fun startStream(torrent: Torrent, saveDir: File = cacheDir) {
-        stopCurrent()
+        stopCurrent()   // cancels monitorJob and removes prior torrent
         _state.value = StreamState.Buffering(0f, 0L, 0L, 0, 0)
 
-        scope.launch {
+        monitorJob = scope.launch {
             try {
                 val uri = torrent.magnet.ifBlank { torrent.url }
                 session.download(uri, saveDir)
@@ -146,6 +148,8 @@ class TorrentEngine @Inject constructor(
     }
 
     fun stopCurrent() {
+        monitorJob?.cancel()   // stop the monitor loop before removing the torrent
+        monitorJob = null
         currentHandle?.let { session.remove(it) }
         currentHandle = null
         streamServer.stop()

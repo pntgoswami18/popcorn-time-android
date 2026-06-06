@@ -56,7 +56,7 @@ class PlayerViewModel @Inject constructor(
             ?: return
 
         context.startForegroundService(Intent(context, TorrentService::class.java))
-        viewModelScope.launch { torrentEngine.startStream(torrent) }
+        torrentEngine.startStream(torrent)  // non-suspend; spawns its own coroutine internally
     }
 
     private fun loadSubtitles() {
