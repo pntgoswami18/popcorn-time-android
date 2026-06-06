@@ -59,11 +59,13 @@ class MovieBrowserViewModel @Inject constructor(
             queryTerm = state.searchQuery,
         )
 
+        // Set loading flag synchronously BEFORE launching the coroutine to prevent TOCTOU race
+        _uiState.update {
+            if (reset) it.copy(isLoading = true, error = null, movies = emptyList())
+            else it.copy(isLoadingMore = true, error = null)
+        }
+
         viewModelScope.launch {
-            _uiState.update {
-                if (reset) it.copy(isLoading = true, error = null, movies = emptyList())
-                else it.copy(isLoadingMore = true, error = null)
-            }
 
             repository.getMovies(filter).fold(
                 onSuccess = { newMovies ->

@@ -9,4 +9,4 @@ data class LibraryItem(
     val addedAt: Long,
 )
 
-enum class LibraryContentType { MOVIE, SHOW }
+enum class LibraryContentType { MOVIE, SHOW, ANIME }

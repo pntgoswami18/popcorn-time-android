@@ -19,6 +19,7 @@ import io.ktor.client.plugins.defaultRequest
 import io.ktor.http.URLProtocol
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
+import com.popcorntime.android.BuildConfig
 import javax.inject.Named
 import javax.inject.Singleton
 
@@ -27,8 +28,6 @@ private val Context.traktDataStore: DataStore<Preferences> by preferencesDataSto
 @Module
 @InstallIn(SingletonComponent::class)
 object TraktModule {
-
-    const val TRAKT_CLIENT_ID = "YOUR_TRAKT_CLIENT_ID_HERE"
 
     @Provides
     @Singleton
@@ -54,14 +53,14 @@ object TraktModule {
                 host = "api.trakt.tv"
             }
             headers.append("trakt-api-version", "2")
-            headers.append("trakt-api-key", TRAKT_CLIENT_ID)
+            headers.append("trakt-api-key", BuildConfig.TRAKT_CLIENT_ID)
         }
     }
 
     @Provides
     @Singleton
     fun provideTraktAuthService(@Named("trakt") client: HttpClient): TraktAuthService =
-        TraktAuthService(client, TRAKT_CLIENT_ID)
+        TraktAuthService(client, BuildConfig.TRAKT_CLIENT_ID)
 
     @Provides
     @Singleton

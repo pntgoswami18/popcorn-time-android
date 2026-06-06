@@ -118,7 +118,7 @@ class ShowDetailViewModel @Inject constructor(
         title = title,
         posterUrl = posterUrl,
         year = year,
-        contentType = LibraryContentType.SHOW,
+        contentType = if (contentType == ContentType.ANIME) LibraryContentType.ANIME else LibraryContentType.SHOW,
         addedAt = System.currentTimeMillis(),
     )
 }

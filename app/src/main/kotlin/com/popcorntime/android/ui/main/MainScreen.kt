@@ -153,6 +153,7 @@ private fun MainNavHost(navController: NavHostController, modifier: Modifier = M
                     when (contentType) {
                         LibraryContentType.MOVIE -> navController.navigate("movie_detail/$imdbId")
                         LibraryContentType.SHOW -> navController.navigate("show_detail/$imdbId/show")
+                        LibraryContentType.ANIME -> navController.navigate("show_detail/$imdbId/anime")
                     }
                 },
                 onTraktSettings = { navController.navigate("settings/trakt") },

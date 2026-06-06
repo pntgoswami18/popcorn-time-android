@@ -14,7 +14,9 @@ import com.popcorntime.android.domain.repository.MovieRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
+import javax.inject.Singleton
 
+@Singleton
 class MovieRepositoryImpl @Inject constructor(
     private val api: MovieApiService,
     private val watchedDao: WatchedDao,

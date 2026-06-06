@@ -116,29 +116,33 @@ fun PlayerScreen(
 @Composable
 private fun ExoPlayerView(streamUrl: String, subtitleUrl: String?, viewModel: PlayerViewModel) {
     val context = LocalContext.current
-    val exoPlayer = remember { ExoPlayer.Builder(context).build() }
-
-    DisposableEffect(streamUrl, subtitleUrl) {
-        val mediaItem = if (subtitleUrl != null) {
-            MediaItem.Builder()
-                .setUri(streamUrl)
-                .setSubtitleConfigurations(
-                    listOf(
-                        MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(subtitleUrl))
-                            .setMimeType(androidx.media3.common.MimeTypes.APPLICATION_SUBRIP)
-                            .setSelectionFlags(androidx.media3.common.C.SELECTION_FLAG_DEFAULT)
-                            .build()
-                    )
-                ).build()
-        } else {
-            MediaItem.fromUri(streamUrl)
+    val exoPlayer = remember {
+        ExoPlayer.Builder(context).build().apply {
+            playWhenReady = true
+            videoScalingMode = androidx.media3.common.C.VIDEO_SCALING_MODE_SCALE_TO_FIT
         }
-        exoPlayer.setMediaItem(mediaItem)
-        exoPlayer.prepare()
-        exoPlayer.playWhenReady = true
+    }
+
+    // Release player only when the composable leaves the composition entirely
+    DisposableEffect(Unit) {
         onDispose { exoPlayer.release() }
     }
 
+    // Rebuild media item whenever stream or subtitle changes — does NOT release player
+    LaunchedEffect(streamUrl, subtitleUrl) {
+        val mediaItemBuilder = MediaItem.Builder().setUri(streamUrl)
+        if (subtitleUrl != null) {
+            val subtitle = MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(subtitleUrl))
+                .setMimeType(androidx.media3.common.MimeTypes.APPLICATION_SUBRIP)
+                .setSelectionFlags(androidx.media3.common.C.SELECTION_FLAG_DEFAULT)
+                .build()
+            mediaItemBuilder.setSubtitleConfigurations(listOf(subtitle))
+        }
+        exoPlayer.setMediaItem(mediaItemBuilder.build())
+        exoPlayer.prepare()
+    }
+
+    // Register listener for playback completion — does NOT release player
     DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {

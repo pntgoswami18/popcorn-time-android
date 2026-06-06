@@ -25,6 +25,7 @@ object AppModule {
     )
 
     @Provides
+    @Singleton
     @Named("movieServers")
     fun provideMovieServers(): List<String> = DEFAULT_MOVIE_SERVERS
 

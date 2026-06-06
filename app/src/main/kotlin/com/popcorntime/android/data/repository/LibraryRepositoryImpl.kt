@@ -132,7 +132,11 @@ class LibraryRepositoryImpl @Inject constructor(
         title = title,
         posterUrl = posterUrl,
         year = year,
-        contentType = if (contentType == LibraryContentType.MOVIE) "movie" else "show",
+        contentType = when (contentType) {
+            LibraryContentType.MOVIE -> "movie"
+            LibraryContentType.SHOW -> "show"
+            LibraryContentType.ANIME -> "anime"
+        },
         addedAt = addedAt,
     )
 
@@ -141,7 +145,11 @@ class LibraryRepositoryImpl @Inject constructor(
         title = title,
         posterUrl = posterUrl,
         year = year,
-        contentType = if (contentType == "movie") LibraryContentType.MOVIE else LibraryContentType.SHOW,
+        contentType = when (contentType) {
+            "movie" -> LibraryContentType.MOVIE
+            "anime" -> LibraryContentType.ANIME
+            else -> LibraryContentType.SHOW
+        },
         addedAt = addedAt,
     )
 }

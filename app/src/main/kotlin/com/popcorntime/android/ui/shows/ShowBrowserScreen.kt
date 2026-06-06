@@ -259,7 +259,7 @@ fun ShowCard(
 }
 
 object ShowCache {
-    private val map = mutableMapOf<String, Show>()
+    private val map = java.util.concurrent.ConcurrentHashMap<String, Show>()
     fun put(show: Show) { map[show.imdbId] = show }
     fun get(imdbId: String): Show? = map[imdbId]
 }

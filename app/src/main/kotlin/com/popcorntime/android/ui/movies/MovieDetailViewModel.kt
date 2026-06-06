@@ -66,7 +66,17 @@ class MovieDetailViewModel @Inject constructor(
         // Look up from the shared movie cache (populated by the browse screen)
         val cached = MovieCache.get(imdbId)
         if (cached != null) { loadMovie(cached); return }
-        _uiState.update { it.copy(isLoading = false, error = "Movie not found") }
+        // Cache miss — fetch from API (covers LibraryScreen → detail navigation)
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            try {
+                val movie = repository.getMovieDetail(imdbId).getOrThrow()
+                MovieCache.put(movie)
+                loadMovie(movie)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, error = e.message ?: "Failed to load movie") }
+            }
+        }
     }
 
     fun selectQuality(quality: String) {
@@ -117,7 +127,7 @@ class MovieDetailViewModel @Inject constructor(
 /** Simple in-process cache so the browse list can pass Movie objects to the detail screen
  *  without serialisation overhead. Replaced by a proper DB-backed cache in Phase 3. */
 object MovieCache {
-    private val map = mutableMapOf<String, Movie>()
+    private val map = java.util.concurrent.ConcurrentHashMap<String, Movie>()
     fun put(movie: Movie) { map[movie.imdbId] = movie }
     fun get(imdbId: String): Movie? = map[imdbId]
 }

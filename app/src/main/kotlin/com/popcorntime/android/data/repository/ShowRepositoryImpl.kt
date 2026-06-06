@@ -16,7 +16,9 @@ import com.popcorntime.android.domain.repository.ShowRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
+import javax.inject.Singleton
 
+@Singleton
 class ShowRepositoryImpl @Inject constructor(
     private val api: ShowApiService,
     private val watchedDao: WatchedDao,

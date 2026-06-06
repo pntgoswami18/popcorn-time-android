@@ -59,11 +59,13 @@ class ShowBrowserViewModel @Inject constructor(
             type = contentType,
         )
 
+        // Set loading flag synchronously BEFORE launching the coroutine to prevent TOCTOU race
+        _uiState.update {
+            if (reset) it.copy(isLoading = true, error = null, shows = emptyList())
+            else it.copy(isLoadingMore = true, error = null)
+        }
+
         viewModelScope.launch {
-            _uiState.update {
-                if (reset) it.copy(isLoading = true, error = null, shows = emptyList())
-                else it.copy(isLoadingMore = true, error = null)
-            }
             repository.getShows(filter).fold(
                 onSuccess = { newShows ->
                     _uiState.update {

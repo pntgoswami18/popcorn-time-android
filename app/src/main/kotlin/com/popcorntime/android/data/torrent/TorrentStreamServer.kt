@@ -67,7 +67,6 @@ class TorrentStreamServer : NanoHTTPD(STREAM_PORT) {
             ).apply {
                 addHeader("Content-Range", "bytes $start-$end/$fileLength")
                 addHeader("Accept-Ranges", "bytes")
-                addHeader("Content-Length", length.toString())
             }
         }
 
@@ -76,7 +75,6 @@ class TorrentStreamServer : NanoHTTPD(STREAM_PORT) {
             Response.Status.OK, mimeType, FileInputStream(file), fileLength
         ).apply {
             addHeader("Accept-Ranges", "bytes")
-            addHeader("Content-Length", fileLength.toString())
         }
     }
 
