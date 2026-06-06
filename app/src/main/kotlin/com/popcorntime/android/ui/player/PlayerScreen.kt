@@ -38,6 +38,7 @@ fun PlayerScreen(
     quality: String,
     season: Int = -1,
     episode: Int = -1,
+    contentType: String = "movie",
     onBack: () -> Unit,
     viewModel: PlayerViewModel = hiltViewModel(),
 ) {

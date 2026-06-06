@@ -46,6 +46,7 @@ class PlayerViewModel @Inject constructor(
     val quality: String = checkNotNull(savedStateHandle["quality"])
     val season: Int = savedStateHandle["season"] ?: -1
     val episode: Int = savedStateHandle["episode"] ?: -1
+    val contentTypeStr: String = savedStateHandle["contentType"] ?: "movie"
 
     val streamState: StateFlow<StreamState> = torrentEngine.state
 
@@ -155,7 +156,7 @@ class PlayerViewModel @Inject constructor(
                 title = show.title,
                 posterUrl = show.posterUrl,
                 year = show.year,
-                contentType = LibraryContentType.SHOW,
+                contentType = if (contentTypeStr == "anime") LibraryContentType.ANIME else LibraryContentType.SHOW,
                 addedAt = System.currentTimeMillis(),
             )
         }

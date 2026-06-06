@@ -29,10 +29,7 @@ class MovieRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getMovieDetail(imdbId: String): Result<Movie> = runCatching {
-        // YTS doesn't support IMDB lookup directly — we search by title/id
-        // In practice, the movie object is already populated from the list; this
-        // is a placeholder for future TMDB enrichment.
-        error("Use movie from browse list — TMDB enrichment coming in Phase 3")
+        api.getMovieByImdbId(imdbId).toDomain()
     }
 
     override fun observeWatched(): Flow<Set<String>> =

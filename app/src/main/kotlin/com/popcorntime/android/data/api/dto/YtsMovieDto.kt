@@ -18,6 +18,19 @@ data class YtsMovieListData(
     val movies: List<YtsMovieDto>? = null,
 )
 
+/** Response wrapper for the /api/v2/movie_details.json endpoint (returns a single movie). */
+@Serializable
+data class YtsMovieDetailResponse(
+    val status: String,
+    @SerialName("status_message") val statusMessage: String,
+    val data: YtsMovieDetailData,
+)
+
+@Serializable
+data class YtsMovieDetailData(
+    val movie: YtsMovieDto,
+)
+
 @Serializable
 data class YtsMovieDto(
     val id: Int,

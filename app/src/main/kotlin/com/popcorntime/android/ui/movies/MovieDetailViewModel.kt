@@ -69,13 +69,16 @@ class MovieDetailViewModel @Inject constructor(
         // Cache miss — fetch from API (covers LibraryScreen → detail navigation)
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
-            try {
-                val movie = repository.getMovieDetail(imdbId).getOrThrow()
-                MovieCache.put(movie)
-                loadMovie(movie)
-            } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = e.message ?: "Failed to load movie") }
-            }
+            val result = repository.getMovieDetail(imdbId)
+            result.fold(
+                onSuccess = { movie ->
+                    MovieCache.put(movie)
+                    loadMovie(movie)
+                },
+                onFailure = { e ->
+                    _uiState.update { it.copy(isLoading = false, error = e.message ?: "Failed to load movie") }
+                },
+            )
         }
     }
 

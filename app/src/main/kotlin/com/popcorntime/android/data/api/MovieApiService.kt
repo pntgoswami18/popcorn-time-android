@@ -1,6 +1,7 @@
 package com.popcorntime.android.data.api
 
 import com.popcorntime.android.data.api.dto.YtsListResponse
+import com.popcorntime.android.data.api.dto.YtsMovieDetailResponse
 import com.popcorntime.android.domain.model.MovieFilter
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -43,6 +44,27 @@ class MovieApiService @Inject constructor(
                 Timber.w(e, "Server $base failed, rotating")
                 errors += e
                 // Rotate — move failed server to the back
+                serverQueue.remove(base)
+                serverQueue.addLast(base)
+            }
+        }
+        throw errors.last()
+    }
+
+    suspend fun getMovieByImdbId(imdbId: String): YtsMovieDto {
+        val errors = mutableListOf<Throwable>()
+        repeat(serverQueue.size) {
+            val base = serverQueue.first()
+            try {
+                val response = client.get("${base}api/v2/movie_details.json") {
+                    parameter("imdb_id", imdbId)
+                }.body<YtsMovieDetailResponse>()
+                serverQueue.remove(base)
+                serverQueue.addFirst(base)
+                return response.data.movie
+            } catch (e: Exception) {
+                Timber.w(e, "Server $base failed for IMDB lookup, rotating")
+                errors += e
                 serverQueue.remove(base)
                 serverQueue.addLast(base)
             }
