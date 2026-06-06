@@ -16,13 +16,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.Serializable
-import javax.inject.Named
-
 @Serializable
 private data class DeviceCodeRequest(val client_id: String)
 
 class TraktAuthService constructor(
-    @Named("trakt") private val client: HttpClient,
+    private val client: HttpClient,
     private val clientId: String,
 ) {
     suspend fun requestDeviceCode(): TraktDeviceCodeResponse {

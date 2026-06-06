@@ -27,6 +27,6 @@ data class LibraryItemEntity(
     val title: String,
     val posterUrl: String,
     val year: String,
-    val contentType: String,   // "movie" or "show"
+    val contentType: String,   // "movie", "show", or "anime"
     val addedAt: Long = System.currentTimeMillis(),
 )

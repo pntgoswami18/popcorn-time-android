@@ -3,8 +3,11 @@ package com.popcorntime.android.ui.shows
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.popcorntime.android.domain.model.ContentType
+import com.popcorntime.android.domain.model.LibraryContentType
+import com.popcorntime.android.domain.model.LibraryItem
 import com.popcorntime.android.domain.model.Show
 import com.popcorntime.android.domain.model.ShowFilter
+import com.popcorntime.android.domain.repository.LibraryRepository
 import com.popcorntime.android.domain.repository.ShowRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,6 +34,7 @@ data class ShowBrowserUiState(
 @HiltViewModel
 class ShowBrowserViewModel @Inject constructor(
     private val repository: ShowRepository,
+    private val libraryRepository: LibraryRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ShowBrowserUiState())
@@ -104,7 +108,20 @@ class ShowBrowserViewModel @Inject constructor(
     }
 
     fun toggleBookmark(imdbId: String) {
-        viewModelScope.launch { repository.toggleBookmarked(imdbId) }
+        viewModelScope.launch {
+            val show = _uiState.value.shows.find { it.imdbId == imdbId }
+                ?: return@launch  // can't build metadata without the show
+            val metadata = LibraryItem(
+                imdbId = show.imdbId,
+                title = show.title,
+                posterUrl = show.posterUrl,
+                year = show.year,
+                contentType = if (contentType == ContentType.ANIME) LibraryContentType.ANIME else LibraryContentType.SHOW,
+                addedAt = System.currentTimeMillis(),
+            )
+            repository.toggleBookmarked(imdbId)
+            libraryRepository.toggleFavourite(imdbId, metadata)
+        }
     }
 
     private fun observeState() {
@@ -114,8 +131,8 @@ class ShowBrowserViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            repository.observeBookmarked().collect { ids ->
-                _uiState.update { it.copy(bookmarkedIds = ids) }
+            libraryRepository.observeFavourites().collect { items ->
+                _uiState.update { it.copy(bookmarkedIds = items.map { item -> item.imdbId }.toSet()) }
             }
         }
     }

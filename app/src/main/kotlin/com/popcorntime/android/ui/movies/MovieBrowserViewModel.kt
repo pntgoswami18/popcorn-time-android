@@ -4,9 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.popcorntime.android.domain.model.ALL_GENRES
 import com.popcorntime.android.domain.model.ALL_QUALITIES
+import com.popcorntime.android.domain.model.LibraryContentType
+import com.popcorntime.android.domain.model.LibraryItem
 import com.popcorntime.android.domain.model.Movie
 import com.popcorntime.android.domain.model.MovieFilter
 import com.popcorntime.android.domain.model.SortOption
+import com.popcorntime.android.domain.repository.LibraryRepository
 import com.popcorntime.android.domain.repository.MovieRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,6 +38,7 @@ data class MovieBrowserUiState(
 @HiltViewModel
 class MovieBrowserViewModel @Inject constructor(
     private val repository: MovieRepository,
+    private val libraryRepository: LibraryRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MovieBrowserUiState())
@@ -114,7 +118,20 @@ class MovieBrowserViewModel @Inject constructor(
     }
 
     fun toggleBookmark(imdbId: String) {
-        viewModelScope.launch { repository.toggleBookmarked(imdbId) }
+        viewModelScope.launch {
+            val movie = _uiState.value.movies.find { it.imdbId == imdbId }
+                ?: return@launch  // can't build metadata without the movie
+            val metadata = LibraryItem(
+                imdbId = movie.imdbId,
+                title = movie.title,
+                posterUrl = movie.posterUrl,
+                year = movie.year.toString(),
+                contentType = LibraryContentType.MOVIE,
+                addedAt = System.currentTimeMillis(),
+            )
+            repository.toggleBookmarked(imdbId)
+            libraryRepository.toggleFavourite(imdbId, metadata)
+        }
     }
 
     private fun observeWatchedAndBookmarked() {
@@ -124,8 +141,8 @@ class MovieBrowserViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            repository.observeBookmarked().collect { ids ->
-                _uiState.update { it.copy(bookmarkedIds = ids) }
+            libraryRepository.observeFavourites().collect { items ->
+                _uiState.update { it.copy(bookmarkedIds = items.map { item -> item.imdbId }.toSet()) }
             }
         }
     }

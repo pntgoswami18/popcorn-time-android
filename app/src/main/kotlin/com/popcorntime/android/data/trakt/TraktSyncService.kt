@@ -18,10 +18,8 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import java.time.Instant
 import java.time.format.DateTimeFormatter
-import javax.inject.Named
-
 class TraktSyncService constructor(
-    @Named("trakt") private val client: HttpClient,
+    private val client: HttpClient,
     private val tokenStore: TraktTokenStore,
 ) {
     private suspend fun token(): String? = tokenStore.getAccessToken()
