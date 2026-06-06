@@ -9,7 +9,9 @@ import io.ktor.client.request.parameter
 import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Named
+import javax.inject.Singleton
 
+@Singleton
 class MovieApiService @Inject constructor(
     private val client: HttpClient,
     @Named("movieServers") private val servers: List<String>,

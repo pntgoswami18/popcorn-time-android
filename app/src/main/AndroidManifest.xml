@@ -15,7 +15,7 @@
 
     <!-- Foreground service for torrent downloads -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_TRANSFER" />
 
     <!-- Keep CPU on during torrent seeding -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -66,7 +66,7 @@
         <service
             android:name=".data.torrent.TorrentService"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="dataTransfer" />
 
     </application>
 

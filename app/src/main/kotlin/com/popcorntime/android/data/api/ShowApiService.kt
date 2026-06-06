@@ -10,7 +10,9 @@ import io.ktor.client.request.parameter
 import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Named
+import javax.inject.Singleton
 
+@Singleton
 class ShowApiService @Inject constructor(
     private val client: HttpClient,
     @Named("showServers") private val serverQueue: ArrayDeque<String>,

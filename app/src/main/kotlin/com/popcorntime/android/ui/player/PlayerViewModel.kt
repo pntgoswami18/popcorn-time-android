@@ -54,33 +54,47 @@ class PlayerViewModel @Inject constructor(
     }
 
     private fun startStream() {
-        val torrent: Torrent? = run {
-            // Try movie cache first
-            val movie = MovieCache.get(imdbId)
-            if (movie != null) {
-                return@run movie.torrents[quality]
-                    ?: movie.torrents.values.maxByOrNull { it.seeds }
-            }
-            // Fall back to show cache for episode torrents
-            val show = ShowCache.get(imdbId) ?: return
-            val ep = show.episodes.firstOrNull { it.season == season && it.episode == episode }
-                ?: return
-            val episodeTorrent = ep.torrents[quality]
-                ?: ep.torrents.values.maxByOrNull { it.seeds }
-                ?: return
-            Torrent(
-                url = episodeTorrent.url,
-                magnet = "",
-                quality = quality,
-                type = "",
-                size = 0L,
-                fileSize = "",
-                seeds = episodeTorrent.seeds,
-                peers = episodeTorrent.peers,
-                hash = "",
-            )
-        } ?: return
+        // Try movie cache first
+        val movie = MovieCache.get(imdbId)
+        if (movie != null) {
+            val torrent = movie.torrents[quality]
+                ?: movie.torrents.values.maxByOrNull { it.seeds }
+                ?: run {
+                    torrentEngine.setError("No torrent found for quality: $quality")
+                    return
+                }
+            context.startForegroundService(Intent(context, TorrentService::class.java))
+            torrentEngine.startStream(torrent)  // non-suspend; spawns its own coroutine internally
+            return
+        }
 
+        // Fall back to show cache for episode torrents
+        val show = ShowCache.get(imdbId)
+        if (show == null) {
+            torrentEngine.setError("Content not found in cache")
+            return
+        }
+        val ep = show.episodes.firstOrNull { it.season == season && it.episode == episode }
+        if (ep == null) {
+            torrentEngine.setError("Episode S${season}E${episode} not found")
+            return
+        }
+        val episodeTorrent = ep.torrents[quality] ?: ep.torrents.values.firstOrNull()
+        if (episodeTorrent == null) {
+            torrentEngine.setError("No torrent for this episode")
+            return
+        }
+        val torrent = Torrent(
+            url = episodeTorrent.url,
+            magnet = "",
+            quality = quality,
+            type = "show",
+            size = 0L,
+            fileSize = "",
+            seeds = episodeTorrent.seeds,
+            peers = episodeTorrent.peers,
+            hash = "",
+        )
         context.startForegroundService(Intent(context, TorrentService::class.java))
         torrentEngine.startStream(torrent)  // non-suspend; spawns its own coroutine internally
     }

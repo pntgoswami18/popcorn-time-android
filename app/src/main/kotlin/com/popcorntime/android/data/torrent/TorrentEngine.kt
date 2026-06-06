@@ -149,6 +149,10 @@ class TorrentEngine @Inject constructor(
         return File(path)
     }
 
+    fun setError(message: String) {
+        _state.value = StreamState.Error(message)
+    }
+
     fun stopCurrent() {
         monitorJob?.cancel()   // stop the monitor loop before removing the torrent
         monitorJob = null
