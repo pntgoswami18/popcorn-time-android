@@ -18,12 +18,9 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import java.time.Instant
 import java.time.format.DateTimeFormatter
-import javax.inject.Inject
 import javax.inject.Named
-import javax.inject.Singleton
 
-@Singleton
-class TraktSyncService @Inject constructor(
+class TraktSyncService constructor(
     @Named("trakt") private val client: HttpClient,
     private val tokenStore: TraktTokenStore,
 ) {

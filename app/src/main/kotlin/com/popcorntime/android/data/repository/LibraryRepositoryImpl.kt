@@ -14,8 +14,8 @@ import com.popcorntime.android.domain.model.LibraryContentType
 import com.popcorntime.android.domain.model.LibraryItem
 import com.popcorntime.android.domain.repository.LibraryRepository
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -32,15 +32,11 @@ class LibraryRepositoryImpl @Inject constructor(
 
     // ── Favourites ────────────────────────────────────────────────────────────
 
-    override fun observeFavourites(): Flow<List<LibraryItem>> {
-        return combine(
-            bookmarkedDao.observeAll(),
-            bookmarkedDao.observeAll(),
-        ) { bookmarkedIds, _ ->
-            if (bookmarkedIds.isEmpty()) emptyList()
-            else libraryItemDao.getByIds(bookmarkedIds).first().map { it.toDomain() }
+    override fun observeFavourites(): Flow<List<LibraryItem>> =
+        bookmarkedDao.observeAll().flatMapLatest { imdbIds ->
+            if (imdbIds.isEmpty()) flowOf(emptyList())
+            else libraryItemDao.getByIds(imdbIds).map { list -> list.map { it.toDomain() } }
         }
-    }
 
     override suspend fun isFavourited(imdbId: String): Boolean =
         bookmarkedDao.isBookmarked(imdbId)
@@ -58,13 +54,12 @@ class LibraryRepositoryImpl @Inject constructor(
 
     // ── Watchlist ─────────────────────────────────────────────────────────────
 
-    override fun observeWatchlist(): Flow<List<LibraryItem>> {
-        return watchlistDao.observeAll().map { entities ->
+    override fun observeWatchlist(): Flow<List<LibraryItem>> =
+        watchlistDao.observeAll().flatMapLatest { entities ->
             val ids = entities.map { it.imdbId }
-            if (ids.isEmpty()) emptyList()
-            else libraryItemDao.getByIds(ids).first().map { it.toDomain() }
+            if (ids.isEmpty()) flowOf(emptyList())
+            else libraryItemDao.getByIds(ids).map { list -> list.map { it.toDomain() } }
         }
-    }
 
     override suspend fun isInWatchlist(imdbId: String): Boolean =
         watchlistDao.isInWatchlist(imdbId)
@@ -82,12 +77,11 @@ class LibraryRepositoryImpl @Inject constructor(
 
     // ── Watched ───────────────────────────────────────────────────────────────
 
-    override fun observeWatched(): Flow<List<LibraryItem>> {
-        return watchedDao.observeAll().map { imdbIds ->
-            if (imdbIds.isEmpty()) emptyList()
-            else libraryItemDao.getByIds(imdbIds).first().map { it.toDomain() }
+    override fun observeWatched(): Flow<List<LibraryItem>> =
+        watchedDao.observeAll().flatMapLatest { imdbIds ->
+            if (imdbIds.isEmpty()) flowOf(emptyList())
+            else libraryItemDao.getByIds(imdbIds).map { list -> list.map { it.toDomain() } }
         }
-    }
 
     override suspend fun isWatched(imdbId: String): Boolean =
         watchedDao.isWatched(imdbId)
