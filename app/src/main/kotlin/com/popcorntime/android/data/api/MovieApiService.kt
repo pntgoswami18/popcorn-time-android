@@ -2,6 +2,7 @@ package com.popcorntime.android.data.api
 
 import com.popcorntime.android.data.api.dto.YtsListResponse
 import com.popcorntime.android.data.api.dto.YtsMovieDetailResponse
+import com.popcorntime.android.data.api.dto.YtsMovieDto
 import com.popcorntime.android.domain.model.MovieFilter
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
