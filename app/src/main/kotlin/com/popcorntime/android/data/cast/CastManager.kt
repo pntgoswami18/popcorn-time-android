@@ -2,7 +2,8 @@ package com.popcorntime.android.data.cast
 
 import android.content.Context
 import android.content.Intent
-import android.net.wifi.WifiManager
+import android.net.ConnectivityManager
+import android.os.Build
 import android.widget.Toast
 import com.popcorntime.android.domain.model.CastState
 import com.popcorntime.android.domain.model.CastTarget
@@ -14,11 +15,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import timber.log.Timber
-import javax.inject.Inject
-import javax.inject.Singleton
 
-@Singleton
-class CastManager @Inject constructor(
+class CastManager constructor(
     private val context: Context,
     private val kodiCaster: KodiCaster,
     private val dlnaCaster: DlnaCaster,
@@ -31,12 +29,32 @@ class CastManager @Inject constructor(
     val castState: StateFlow<CastState> = _castState.asStateFlow()
 
     /** Replaces 127.0.0.1 with the device's real LAN IP so external receivers can reach NanoHTTPD. */
+    @Suppress("DEPRECATION")
     fun toLanUrl(streamUrl: String): String {
-        val wifiManager = context.getSystemService(WifiManager::class.java) ?: return streamUrl
-        val ip = wifiManager.connectionInfo?.ipAddress ?: return streamUrl
-        if (ip == 0) return streamUrl
-        val lanIp = "${ip and 0xff}.${(ip shr 8) and 0xff}.${(ip shr 16) and 0xff}.${(ip shr 24) and 0xff}"
+        val lanIp = getLanIp() ?: return streamUrl
         return streamUrl.replace("127.0.0.1", lanIp)
+    }
+
+    private fun getLanIp(): String? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // API 31+: use ConnectivityManager
+            val cm = context.getSystemService(ConnectivityManager::class.java) ?: return null
+            val network = cm.activeNetwork ?: return null
+            val linkProps = cm.getLinkProperties(network) ?: return null
+            linkProps.linkAddresses
+                .map { it.address }
+                .filterIsInstance<java.net.Inet4Address>()
+                .firstOrNull { !it.isLoopbackAddress }
+                ?.hostAddress
+        } else {
+            // API 26–30: WifiManager still works
+            @Suppress("DEPRECATION")
+            val wifiManager = context.getSystemService(android.net.wifi.WifiManager::class.java) ?: return null
+            @Suppress("DEPRECATION")
+            val ip = wifiManager.connectionInfo?.ipAddress ?: return null
+            if (ip == 0) return null
+            "${ip and 0xff}.${(ip shr 8) and 0xff}.${(ip shr 16) and 0xff}.${(ip shr 24) and 0xff}"
+        }
     }
 
     fun castToChromecast(streamUrl: String, title: String) {

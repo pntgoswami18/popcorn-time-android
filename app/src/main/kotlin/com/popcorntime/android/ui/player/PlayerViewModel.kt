@@ -163,7 +163,9 @@ class PlayerViewModel @Inject constructor(
 
     fun castToChromecast() {
         val streamUrl = (streamState.value as? StreamState.Ready)?.streamUrl ?: return
-        val title = imdbId   // ideally the movie/show title — use imdbId as fallback
+        val title = MovieCache.get(imdbId)?.title
+            ?: ShowCache.get(imdbId)?.title
+            ?: imdbId
         castManager.castToChromecast(streamUrl, title)
         _uiState.update { it.copy(showCastSheet = false) }
     }
@@ -233,7 +235,10 @@ class PlayerViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        stopStream()
+        // PlayerScreen's DisposableEffect calls stopStream() on composition disposal.
+        // Here we only clean up cast-specific resources that outlive the screen.
         castManager.chromeCaster.unregisterSessionListener()
+        castManager.dlnaDiscovery.stopDiscovery()
+        castManager.disconnect()
     }
 }

@@ -3,10 +3,12 @@ package com.popcorntime.android.data.cast
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
+import android.os.Build
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import timber.log.Timber
+import java.util.concurrent.Executors
 
 data class DlnaRenderer(
     val name: String,
@@ -27,25 +29,6 @@ class DlnaDiscovery(private val context: Context) {
 
     fun startDiscovery() {
         if (discoveryListener != null) return
-        val found = mutableListOf<DlnaRenderer>()
-
-        val resolveListener = object : NsdManager.ResolveListener {
-            override fun onResolveFailed(info: NsdServiceInfo, code: Int) {
-                Timber.w("DLNA resolve failed: $code")
-            }
-            override fun onServiceResolved(info: NsdServiceInfo) {
-                val host = info.host?.hostAddress ?: return
-                val renderer = DlnaRenderer(
-                    name = info.serviceName,
-                    host = host,
-                    port = info.port,
-                )
-                found.removeAll { it.name == renderer.name }
-                found.add(renderer)
-                _renderers.value = found.toList()
-                Timber.d("DLNA renderer found: ${renderer.name} @ $host:${info.port}")
-            }
-        }
 
         discoveryListener = object : NsdManager.DiscoveryListener {
             override fun onStartDiscoveryFailed(type: String, code: Int) {
@@ -62,16 +45,35 @@ class DlnaDiscovery(private val context: Context) {
                 discoveryListener = null
             }
             override fun onServiceFound(info: NsdServiceInfo) {
+                val perCallResolver = object : NsdManager.ResolveListener {
+                    override fun onResolveFailed(i: NsdServiceInfo, code: Int) {
+                        Timber.w("DLNA resolve failed: $code for ${i.serviceName}")
+                    }
+                    override fun onServiceResolved(i: NsdServiceInfo) {
+                        val host = i.host?.hostAddress ?: return
+                        val renderer = DlnaRenderer(name = i.serviceName, host = host, port = i.port)
+                        val current = _renderers.value.toMutableList()
+                        current.removeAll { it.name == renderer.name }
+                        current.add(renderer)
+                        _renderers.value = current
+                        Timber.d("DLNA renderer found: ${renderer.name} @ $host:${i.port}")
+                    }
+                }
                 try {
-                    @Suppress("DEPRECATION")
-                    nsdManager.resolveService(info, resolveListener)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                        nsdManager.resolveService(info, Executors.newSingleThreadExecutor(), perCallResolver)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        nsdManager.resolveService(info, perCallResolver)
+                    }
                 } catch (e: Exception) {
-                    Timber.w(e, "DLNA resolve enqueue failed")
+                    Timber.w(e, "DLNA resolve enqueue failed: ${info.serviceName}")
                 }
             }
             override fun onServiceLost(info: NsdServiceInfo) {
-                found.removeAll { it.name == info.serviceName }
-                _renderers.value = found.toList()
+                val current = _renderers.value.toMutableList()
+                current.removeAll { it.name == info.serviceName }
+                _renderers.value = current
             }
         }
 
