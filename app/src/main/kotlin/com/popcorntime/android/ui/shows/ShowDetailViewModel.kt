@@ -4,9 +4,12 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.popcorntime.android.domain.model.ContentType
+import com.popcorntime.android.domain.model.LibraryContentType
+import com.popcorntime.android.domain.model.LibraryItem
 import com.popcorntime.android.domain.model.Season
 import com.popcorntime.android.domain.model.Show
 import com.popcorntime.android.domain.model.seasons
+import com.popcorntime.android.domain.repository.LibraryRepository
 import com.popcorntime.android.domain.repository.ShowRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,11 +27,13 @@ data class ShowDetailUiState(
     val error: String? = null,
     val isWatched: Boolean = false,
     val isBookmarked: Boolean = false,
+    val isInWatchlist: Boolean = false,
 )
 
 @HiltViewModel
 class ShowDetailViewModel @Inject constructor(
     private val repository: ShowRepository,
+    private val libraryRepository: LibraryRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -53,6 +58,11 @@ class ShowDetailViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
+            // Load watchlist and favourite state
+            val inWatchlist = libraryRepository.isInWatchlist(imdbId)
+            val isFavourited = libraryRepository.isFavourited(imdbId)
+            _uiState.update { it.copy(isInWatchlist = inWatchlist, isBookmarked = isFavourited) }
+
             repository.getShowDetail(imdbId, contentType).fold(
                 onSuccess = { show ->
                     ShowCache.put(show)
@@ -85,8 +95,30 @@ class ShowDetailViewModel @Inject constructor(
 
     fun toggleBookmark() {
         viewModelScope.launch {
-            repository.toggleBookmarked(imdbId)
+            val show = _uiState.value.show ?: return@launch
+            libraryRepository.toggleFavourite(imdbId, show.toLibraryItem())
             _uiState.update { it.copy(isBookmarked = !it.isBookmarked) }
         }
     }
+
+    fun toggleWatchlist() {
+        viewModelScope.launch {
+            val show = _uiState.value.show ?: return@launch
+            if (_uiState.value.isInWatchlist) {
+                libraryRepository.removeFromWatchlist(imdbId)
+            } else {
+                libraryRepository.addToWatchlist(imdbId, show.toLibraryItem())
+            }
+            _uiState.update { it.copy(isInWatchlist = !it.isInWatchlist) }
+        }
+    }
+
+    private fun Show.toLibraryItem() = LibraryItem(
+        imdbId = imdbId,
+        title = title,
+        posterUrl = posterUrl,
+        year = year,
+        contentType = LibraryContentType.SHOW,
+        addedAt = System.currentTimeMillis(),
+    )
 }

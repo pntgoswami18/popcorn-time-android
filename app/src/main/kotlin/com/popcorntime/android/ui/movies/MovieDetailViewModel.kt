@@ -3,7 +3,10 @@ package com.popcorntime.android.ui.movies
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.popcorntime.android.domain.model.LibraryContentType
+import com.popcorntime.android.domain.model.LibraryItem
 import com.popcorntime.android.domain.model.Movie
+import com.popcorntime.android.domain.repository.LibraryRepository
 import com.popcorntime.android.domain.repository.MovieRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,12 +22,14 @@ data class MovieDetailUiState(
     val error: String? = null,
     val isWatched: Boolean = false,
     val isBookmarked: Boolean = false,
+    val isInWatchlist: Boolean = false,
     val selectedQuality: String = "1080p",
 )
 
 @HiltViewModel
 class MovieDetailViewModel @Inject constructor(
     private val repository: MovieRepository,
+    private val libraryRepository: LibraryRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -39,6 +44,7 @@ class MovieDetailViewModel @Inject constructor(
         viewModelScope.launch {
             val watched = repository.isWatched(movie.imdbId)
             val bookmarked = repository.isBookmarked(movie.imdbId)
+            val inWatchlist = libraryRepository.isInWatchlist(movie.imdbId)
             val bestQuality = movie.torrents.keys
                 .sortedWith(compareByDescending { qualityRank(it) })
                 .firstOrNull() ?: "1080p"
@@ -48,6 +54,7 @@ class MovieDetailViewModel @Inject constructor(
                     isLoading = false,
                     isWatched = watched,
                     isBookmarked = bookmarked,
+                    isInWatchlist = inWatchlist,
                     selectedQuality = bestQuality,
                 )
             }
@@ -75,14 +82,36 @@ class MovieDetailViewModel @Inject constructor(
 
     fun toggleBookmark() {
         viewModelScope.launch {
-            repository.toggleBookmarked(imdbId)
+            val movie = _uiState.value.movie ?: return@launch
+            libraryRepository.toggleFavourite(imdbId, movie.toLibraryItem())
             _uiState.update { it.copy(isBookmarked = !it.isBookmarked) }
+        }
+    }
+
+    fun toggleWatchlist() {
+        viewModelScope.launch {
+            val movie = _uiState.value.movie ?: return@launch
+            if (_uiState.value.isInWatchlist) {
+                libraryRepository.removeFromWatchlist(imdbId)
+            } else {
+                libraryRepository.addToWatchlist(imdbId, movie.toLibraryItem())
+            }
+            _uiState.update { it.copy(isInWatchlist = !it.isInWatchlist) }
         }
     }
 
     private fun qualityRank(quality: String) = when (quality) {
         "2160p" -> 4; "1080p" -> 3; "720p" -> 2; "3D" -> 1; else -> 0
     }
+
+    private fun Movie.toLibraryItem() = LibraryItem(
+        imdbId = imdbId,
+        title = title,
+        posterUrl = posterUrl,
+        year = year.toString(),
+        contentType = LibraryContentType.MOVIE,
+        addedAt = System.currentTimeMillis(),
+    )
 }
 
 /** Simple in-process cache so the browse list can pass Movie objects to the detail screen

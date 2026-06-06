@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
@@ -62,6 +63,7 @@ fun PlayerScreen(
                 ExoPlayerView(
                     streamUrl = s.streamUrl,
                     subtitleUrl = uiState.subtitleUrl,
+                    viewModel = viewModel,
                 )
                 StreamStatsOverlay(
                     dlSpeed = s.downloadSpeed,
@@ -112,7 +114,7 @@ fun PlayerScreen(
 
 @OptIn(UnstableApi::class)
 @Composable
-private fun ExoPlayerView(streamUrl: String, subtitleUrl: String?) {
+private fun ExoPlayerView(streamUrl: String, subtitleUrl: String?, viewModel: PlayerViewModel) {
     val context = LocalContext.current
     val exoPlayer = remember { ExoPlayer.Builder(context).build() }
 
@@ -135,6 +137,18 @@ private fun ExoPlayerView(streamUrl: String, subtitleUrl: String?) {
         exoPlayer.prepare()
         exoPlayer.playWhenReady = true
         onDispose { exoPlayer.release() }
+    }
+
+    DisposableEffect(exoPlayer) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) {
+                    viewModel.onPlaybackCompleted()
+                }
+            }
+        }
+        exoPlayer.addListener(listener)
+        onDispose { exoPlayer.removeListener(listener) }
     }
 
     androidx.compose.ui.viewinterop.AndroidView(

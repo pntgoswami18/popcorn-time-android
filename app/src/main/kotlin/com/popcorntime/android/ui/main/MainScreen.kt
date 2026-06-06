@@ -6,6 +6,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Slideshow
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -20,9 +21,12 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.popcorntime.android.domain.model.ContentType
+import com.popcorntime.android.domain.model.LibraryContentType
+import com.popcorntime.android.ui.library.LibraryScreen
 import com.popcorntime.android.ui.movies.MovieBrowserScreen
 import com.popcorntime.android.ui.movies.MovieDetailScreen
 import com.popcorntime.android.ui.player.PlayerScreen
+import com.popcorntime.android.ui.settings.TraktSettingsScreen
 import com.popcorntime.android.ui.shows.ShowBrowserScreen
 import com.popcorntime.android.ui.shows.ShowDetailScreen
 
@@ -30,9 +34,10 @@ sealed class Tab(val route: String, val label: String, val icon: ImageVector) {
     data object Movies : Tab("tab_movies", "Movies", Icons.Default.Movie)
     data object Series : Tab("tab_series", "Series", Icons.Default.Slideshow)
     data object Anime : Tab("tab_anime", "Anime", Icons.Default.Star)
+    data object Library : Tab("tab_library", "Library", Icons.Default.VideoLibrary)
 
     companion object {
-        val all = listOf(Movies, Series, Anime)
+        val all = listOf(Movies, Series, Anime, Library)
     }
 }
 
@@ -42,8 +47,10 @@ fun MainScreen() {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDest = navBackStackEntry?.destination
 
-    // Hide bottom bar when inside the player
-    val showBottomBar = currentDest?.route?.startsWith("player/") == false
+    // Hide bottom bar when inside the player or trakt settings
+    val showBottomBar = currentDest?.route?.let { route ->
+        !route.startsWith("player/") && route != "settings/trakt"
+    } != false
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -137,6 +144,22 @@ private fun MainNavHost(navController: NavHostController, modifier: Modifier = M
                 contentType = ContentType.ANIME,
                 onShowClick = { imdbId -> navController.navigate("show_detail/$imdbId/anime") },
             )
+        }
+
+        // ── Library tab ───────────────────────────────────────────────────────
+        composable(Tab.Library.route) {
+            LibraryScreen(
+                onItemClick = { imdbId, contentType ->
+                    when (contentType) {
+                        LibraryContentType.MOVIE -> navController.navigate("movie_detail/$imdbId")
+                        LibraryContentType.SHOW -> navController.navigate("show_detail/$imdbId/show")
+                    }
+                },
+                onTraktSettings = { navController.navigate("settings/trakt") },
+            )
+        }
+        composable("settings/trakt") {
+            TraktSettingsScreen(onBack = { navController.popBackStack() })
         }
 
         // ── Player (shared across all tabs) ───────────────────────────────────

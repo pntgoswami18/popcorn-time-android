@@ -21,6 +21,8 @@ android {
 
         // Torrent engine ABI filters — arm64 covers all modern Android devices
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
+
+        buildConfigField("String", "TRAKT_CLIENT_ID", "\"YOUR_TRAKT_CLIENT_ID_HERE\"")
     }
 
     buildTypes {
@@ -41,7 +43,7 @@ android {
 
     kotlinOptions { jvmTarget = "17" }
 
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; buildConfig = true }
 
     composeOptions { kotlinCompilerExtensionVersion = "1.5.13" }
 
@@ -110,4 +112,8 @@ dependencies {
     // Logging
     implementation(libs.timber)
     implementation(libs.accompanist.systemuicontroller)
+
+    // DataStore + Trakt auth
+    implementation(libs.androidx.datastore.preferences)
+    implementation(libs.ktor.client.auth)
 }

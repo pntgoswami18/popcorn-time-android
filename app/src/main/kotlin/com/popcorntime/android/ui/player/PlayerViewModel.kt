@@ -9,8 +9,11 @@ import com.popcorntime.android.data.subtitles.Subtitle
 import com.popcorntime.android.data.subtitles.SubtitleService
 import com.popcorntime.android.data.torrent.TorrentEngine
 import com.popcorntime.android.data.torrent.TorrentService
+import com.popcorntime.android.domain.model.LibraryContentType
+import com.popcorntime.android.domain.model.LibraryItem
 import com.popcorntime.android.domain.model.StreamState
 import com.popcorntime.android.domain.model.Torrent
+import com.popcorntime.android.domain.repository.LibraryRepository
 import com.popcorntime.android.ui.movies.MovieCache
 import com.popcorntime.android.ui.shows.ShowCache
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -34,6 +37,7 @@ data class PlayerUiState(
 class PlayerViewModel @Inject constructor(
     private val torrentEngine: TorrentEngine,
     private val subtitleService: SubtitleService,
+    private val libraryRepository: LibraryRepository,
     @ApplicationContext private val context: Context,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -123,6 +127,39 @@ class PlayerViewModel @Inject constructor(
     fun stopStream() {
         torrentEngine.stopCurrent()
         context.stopService(Intent(context, TorrentService::class.java))
+    }
+
+    fun onPlaybackCompleted() {
+        viewModelScope.launch {
+            val metadata = buildLibraryMetadata() ?: return@launch
+            libraryRepository.markWatched(imdbId, metadata)
+        }
+    }
+
+    private fun buildLibraryMetadata(): LibraryItem? {
+        val movie = MovieCache.get(imdbId)
+        if (movie != null) {
+            return LibraryItem(
+                imdbId = imdbId,
+                title = movie.title,
+                posterUrl = movie.posterUrl,
+                year = movie.year.toString(),
+                contentType = LibraryContentType.MOVIE,
+                addedAt = System.currentTimeMillis(),
+            )
+        }
+        val show = ShowCache.get(imdbId)
+        if (show != null) {
+            return LibraryItem(
+                imdbId = imdbId,
+                title = show.title,
+                posterUrl = show.posterUrl,
+                year = show.year,
+                contentType = LibraryContentType.SHOW,
+                addedAt = System.currentTimeMillis(),
+            )
+        }
+        return null
     }
 
     override fun onCleared() {

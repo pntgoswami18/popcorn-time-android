@@ -53,9 +53,16 @@ fun MovieDetailScreen(
                     state.movie?.let { movie ->
                         IconButton(onClick = { viewModel.toggleBookmark() }) {
                             Icon(
-                                if (state.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                                contentDescription = "Bookmark",
+                                if (state.isBookmarked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = "Favourite",
                                 tint = if (state.isBookmarked) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+                            )
+                        }
+                        IconButton(onClick = { viewModel.toggleWatchlist() }) {
+                            Icon(
+                                if (state.isInWatchlist) Icons.Default.PlaylistAddCheck else Icons.Default.PlaylistAdd,
+                                contentDescription = "Watchlist",
+                                tint = if (state.isInWatchlist) MaterialTheme.colorScheme.primary else LocalContentColor.current,
                             )
                         }
                         IconButton(onClick = { viewModel.toggleWatched() }) {
