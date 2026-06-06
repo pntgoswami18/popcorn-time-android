@@ -4,8 +4,6 @@ import fi.iki.elonen.NanoHTTPD
 import timber.log.Timber
 import java.io.File
 import java.io.FileInputStream
-import javax.inject.Inject
-import javax.inject.Singleton
 
 /**
  * Local HTTP server that serves a (potentially still-downloading) torrent file
@@ -14,8 +12,7 @@ import javax.inject.Singleton
  *
  * Mirrors webtorrent/lib/server.js in popcorn-desktop.
  */
-@Singleton
-class TorrentStreamServer @Inject constructor() : NanoHTTPD(STREAM_PORT) {
+class TorrentStreamServer : NanoHTTPD(STREAM_PORT) {
 
     private var videoFile: File? = null
 

@@ -53,11 +53,15 @@ class MovieApiService @Inject constructor(
         repeat(serverQueue.size) {
             val base = serverQueue.first()
             try {
-                return client.get("${base}api/v2/list_movies.json") {
+                val response = client.get("${base}api/v2/list_movies.json") {
                     parameter("movie_id", movieId)
                     parameter("with_images", true)
                     parameter("with_cast", true)
                 }.body<YtsListResponse>()
+                // On success, promote this server to head
+                serverQueue.remove(base)
+                serverQueue.addFirst(base)
+                return response
             } catch (e: Exception) {
                 errors += e
                 serverQueue.remove(base)

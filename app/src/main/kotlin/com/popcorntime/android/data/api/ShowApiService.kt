@@ -13,11 +13,8 @@ import javax.inject.Named
 
 class ShowApiService @Inject constructor(
     private val client: HttpClient,
-    @Named("movieServers") private val servers: List<String>,
+    @Named("showServers") private val serverQueue: ArrayDeque<String>,
 ) {
-    // Exclude YTS (movie-only) — use the general Popcorn Time API servers
-    private val ptServers = servers.filter { !it.contains("yts") }.toMutableList().also { it.shuffle() }
-    private val serverQueue = ArrayDeque(ptServers.ifEmpty { servers.shuffled() })
 
     private val contentPath = { type: ContentType ->
         if (type == ContentType.SHOW) "shows" else "animes"

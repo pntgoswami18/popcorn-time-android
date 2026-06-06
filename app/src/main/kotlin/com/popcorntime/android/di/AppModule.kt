@@ -30,6 +30,16 @@ object AppModule {
 
     @Provides
     @Singleton
+    @Named("showServers")
+    fun provideShowServers(): ArrayDeque<String> = ArrayDeque(
+        listOf(
+            "https://tv-v2.api-fetch.sh/",
+            "https://shows.api-fetch.website/",
+        ).shuffled()
+    )
+
+    @Provides
+    @Singleton
     fun provideTorrentCacheDir(@ApplicationContext context: Context): File =
         File(context.cacheDir, "torrents").also { it.mkdirs() }
 
