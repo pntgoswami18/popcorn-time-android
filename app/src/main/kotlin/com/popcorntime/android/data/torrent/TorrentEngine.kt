@@ -86,10 +86,11 @@ class TorrentEngine @Inject constructor(
     }
 
     private suspend fun monitorProgress() {
-        while (scope.isActive) {
-            val handle = session.torrents().firstOrNull() ?: run {
+        while (isActive) {
+            val handle = session.torrents().firstOrNull()
+            if (handle == null) {
                 delay(500)
-                return@monitorProgress
+                continue
             }
             currentHandle = handle
             val status = handle.status()
@@ -104,9 +105,10 @@ class TorrentEngine @Inject constructor(
                     _state.value = StreamState.Buffering(progress, dlSpeed, ulSpeed, seeds, peers)
                     if (progress >= BUFFER_THRESHOLD) {
                         // Find the largest file in the torrent — that's the video
-                        val videoFile = findVideoFile(handle) ?: run {
+                        val videoFile = findVideoFile(handle)
+                        if (videoFile == null) {
                             delay(1000)
-                            return@monitorProgress
+                            continue
                         }
                         val streamUrl = streamServer.start(videoFile)
                         _state.value = StreamState.Ready(streamUrl, dlSpeed, ulSpeed, seeds, peers, progress)

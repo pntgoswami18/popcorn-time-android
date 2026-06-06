@@ -37,7 +37,7 @@ class TorrentStreamServer @Inject constructor() : NanoHTTPD(STREAM_PORT) {
     fun stop() {
         videoFile = null
         if (isAlive) {
-            stop()
+            super.stop()
             Timber.d("TorrentStreamServer stopped")
         }
     }

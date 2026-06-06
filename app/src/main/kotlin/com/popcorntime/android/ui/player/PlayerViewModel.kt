@@ -10,7 +10,9 @@ import com.popcorntime.android.data.subtitles.SubtitleService
 import com.popcorntime.android.data.torrent.TorrentEngine
 import com.popcorntime.android.data.torrent.TorrentService
 import com.popcorntime.android.domain.model.StreamState
+import com.popcorntime.android.domain.model.Torrent
 import com.popcorntime.android.ui.movies.MovieCache
+import com.popcorntime.android.ui.shows.ShowCache
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,6 +40,8 @@ class PlayerViewModel @Inject constructor(
 
     val imdbId: String = checkNotNull(savedStateHandle["imdbId"])
     val quality: String = checkNotNull(savedStateHandle["quality"])
+    val season: Int = savedStateHandle["season"] ?: -1
+    val episode: Int = savedStateHandle["episode"] ?: -1
 
     val streamState: StateFlow<StreamState> = torrentEngine.state
 
@@ -50,10 +54,32 @@ class PlayerViewModel @Inject constructor(
     }
 
     private fun startStream() {
-        val movie = MovieCache.get(imdbId) ?: return
-        val torrent = movie.torrents[quality]
-            ?: movie.torrents.values.maxByOrNull { it.seeds }
-            ?: return
+        val torrent: Torrent? = run {
+            // Try movie cache first
+            val movie = MovieCache.get(imdbId)
+            if (movie != null) {
+                return@run movie.torrents[quality]
+                    ?: movie.torrents.values.maxByOrNull { it.seeds }
+            }
+            // Fall back to show cache for episode torrents
+            val show = ShowCache.get(imdbId) ?: return
+            val ep = show.episodes.firstOrNull { it.season == season && it.episode == episode }
+                ?: return
+            val episodeTorrent = ep.torrents[quality]
+                ?: ep.torrents.values.maxByOrNull { it.seeds }
+                ?: return
+            Torrent(
+                url = episodeTorrent.url,
+                magnet = "",
+                quality = quality,
+                type = "",
+                size = 0L,
+                fileSize = "",
+                seeds = episodeTorrent.seeds,
+                peers = episodeTorrent.peers,
+                hash = "",
+            )
+        } ?: return
 
         context.startForegroundService(Intent(context, TorrentService::class.java))
         torrentEngine.startStream(torrent)  // non-suspend; spawns its own coroutine internally

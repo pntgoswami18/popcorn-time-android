@@ -5,6 +5,10 @@ import io.ktor.client.call.body
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import timber.log.Timber
@@ -40,6 +44,11 @@ data class OsSubtitleFile(
 data class OsDownloadResponse(
     val link: String = "",
     @SerialName("file_name") val fileName: String = "",
+)
+
+@Serializable
+data class OsDownloadRequest(
+    @SerialName("file_id") val fileId: Int,
 )
 
 data class Subtitle(
@@ -99,10 +108,11 @@ class SubtitleService @Inject constructor(
      * OpenSubtitles requires a separate download request per file.
      */
     suspend fun getDownloadUrl(fileId: Int): String? = runCatching {
-        val response = client.get("$BASE_URL/download") {
+        val response = client.post("$BASE_URL/download") {
             header("Api-Key", API_KEY)
             header("User-Agent", "PopcornTimeAndroid v1.0")
-            parameter("file_id", fileId)
+            contentType(ContentType.Application.Json)
+            setBody(OsDownloadRequest(fileId))
         }.body<OsDownloadResponse>()
         response.link.takeIf { it.isNotBlank() }
     }.getOrElse { e ->

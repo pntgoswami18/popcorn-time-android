@@ -35,6 +35,8 @@ import com.popcorntime.android.domain.model.StreamState
 fun PlayerScreen(
     imdbId: String,
     quality: String,
+    season: Int = -1,
+    episode: Int = -1,
     onBack: () -> Unit,
     viewModel: PlayerViewModel = hiltViewModel(),
 ) {

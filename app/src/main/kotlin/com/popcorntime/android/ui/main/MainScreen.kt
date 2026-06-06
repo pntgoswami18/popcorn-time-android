@@ -125,8 +125,8 @@ private fun MainNavHost(navController: NavHostController, modifier: Modifier = M
             ShowDetailScreen(
                 imdbId = imdbId,
                 onBack = { navController.popBackStack() },
-                onEpisodePlay = { _, _, _, quality ->
-                    navController.navigate("player/$imdbId/$quality")
+                onEpisodePlay = { _, season, episode, quality ->
+                    navController.navigate("player/$imdbId/$quality?season=$season&episode=$episode")
                 },
             )
         }
@@ -141,17 +141,23 @@ private fun MainNavHost(navController: NavHostController, modifier: Modifier = M
 
         // ── Player (shared across all tabs) ───────────────────────────────────
         composable(
-            route = "player/{imdbId}/{quality}",
+            route = "player/{imdbId}/{quality}?season={season}&episode={episode}",
             arguments = listOf(
                 navArgument("imdbId") { type = NavType.StringType },
                 navArgument("quality") { type = NavType.StringType },
+                navArgument("season") { type = NavType.IntType; defaultValue = -1 },
+                navArgument("episode") { type = NavType.IntType; defaultValue = -1 },
             ),
         ) { backStack ->
             val imdbId = backStack.arguments!!.getString("imdbId")!!
             val quality = backStack.arguments!!.getString("quality")!!
+            val season = backStack.arguments!!.getInt("season")
+            val episode = backStack.arguments!!.getInt("episode")
             PlayerScreen(
                 imdbId = imdbId,
                 quality = quality,
+                season = season,
+                episode = episode,
                 onBack = { navController.popBackStack() },
             )
         }
