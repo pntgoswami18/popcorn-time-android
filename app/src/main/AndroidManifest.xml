@@ -26,6 +26,9 @@
     <!-- Vibrate for notifications -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- Cast / network routing -->
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+
     <application
         android:name=".PopcornApp"
         android:allowBackup="true"
@@ -67,6 +70,20 @@
             android:name=".data.torrent.TorrentService"
             android:exported="false"
             android:foregroundServiceType="dataTransfer" />
+
+        <!-- Cast SDK -->
+        <meta-data
+            android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+            android:value="com.popcorntime.android.data.cast.PopcornCastOptionsProvider" />
+
+        <activity
+            android:name="com.google.android.gms.cast.framework.media.widget.ExpandedControlsActivity"
+            android:exported="false"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+            </intent-filter>
+        </activity>
 
     </application>
 

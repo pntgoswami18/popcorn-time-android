@@ -20,6 +20,7 @@ libtorrent4j = "2.1.0-31"
 nanohttpd = "2.3.1"
 timber = "5.0.1"
 accompanist = "0.34.0"
+castFramework = "21.5.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -60,6 +61,7 @@ timber = { group = "com.jakewharton.timber", name = "timber", version.ref = "tim
 accompanist-systemuicontroller = { group = "com.google.accompanist", name = "accompanist-systemuicontroller", version.ref = "accompanist" }
 androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
 ktor-client-auth = { group = "io.ktor", name = "ktor-client-auth", version.ref = "ktor" }
+play-services-cast-framework = { group = "com.google.android.gms", name = "play-services-cast-framework", version.ref = "castFramework" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

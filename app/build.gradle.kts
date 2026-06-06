@@ -116,4 +116,7 @@ dependencies {
     // DataStore + Trakt auth
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.ktor.client.auth)
+
+    // Cast
+    implementation(libs.play.services.cast.framework)
 }

@@ -12,6 +12,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Cast
+import androidx.compose.material.icons.filled.CastConnected
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.ClosedCaptionOff
 import androidx.compose.material3.*
@@ -28,8 +30,12 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import com.popcorntime.android.data.cast.DlnaRenderer
 import com.popcorntime.android.data.subtitles.Subtitle
+import com.popcorntime.android.domain.model.CastState
 import com.popcorntime.android.domain.model.StreamState
+import com.popcorntime.android.ui.cast.CastBottomSheet
+import com.popcorntime.android.ui.cast.CastOverlay
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -88,14 +94,24 @@ fun PlayerScreen(
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
             }
-            IconButton(onClick = viewModel::toggleSubtitlePicker) {
-                Icon(
-                    imageVector = if (uiState.selectedSubtitle != null) Icons.Default.ClosedCaption
-                                  else Icons.Default.ClosedCaptionOff,
-                    contentDescription = "Subtitles",
-                    tint = if (uiState.selectedSubtitle != null) MaterialTheme.colorScheme.primary
-                           else Color.White,
-                )
+            Row {
+                val isCasting = uiState.castState is CastState.Connected
+                IconButton(onClick = viewModel::toggleCastSheet) {
+                    Icon(
+                        imageVector = if (isCasting) Icons.Default.CastConnected else Icons.Default.Cast,
+                        contentDescription = "Cast",
+                        tint = if (isCasting) MaterialTheme.colorScheme.primary else Color.White,
+                    )
+                }
+                IconButton(onClick = viewModel::toggleSubtitlePicker) {
+                    Icon(
+                        imageVector = if (uiState.selectedSubtitle != null) Icons.Default.ClosedCaption
+                                      else Icons.Default.ClosedCaptionOff,
+                        contentDescription = "Subtitles",
+                        tint = if (uiState.selectedSubtitle != null) MaterialTheme.colorScheme.primary
+                               else Color.White,
+                    )
+                }
             }
         }
 
@@ -107,6 +123,30 @@ fun PlayerScreen(
                 isLoading = uiState.isLoadingSubtitles,
                 onSelect = viewModel::selectSubtitle,
                 onDismiss = viewModel::toggleSubtitlePicker,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
+
+        // Cast bottom sheet
+        if (uiState.showCastSheet) {
+            CastBottomSheet(
+                castState = uiState.castState,
+                kodiAddress = uiState.kodiAddress,
+                dlnaRenderers = uiState.dlnaRenderers,
+                onChromecastClick = viewModel::castToChromecast,
+                onExternalPlayerClick = viewModel::castToExternalPlayer,
+                onKodiConnect = viewModel::castToKodi,
+                onDlnaSelect = viewModel::castToDlna,
+                onDismiss = viewModel::toggleCastSheet,
+            )
+        }
+
+        // Cast overlay (active casting status strip)
+        val castState = uiState.castState
+        if (castState is CastState.Connected) {
+            CastOverlay(
+                castState = castState,
+                onDisconnect = viewModel::disconnectCast,
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }

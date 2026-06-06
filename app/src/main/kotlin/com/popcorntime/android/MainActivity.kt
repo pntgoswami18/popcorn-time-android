@@ -17,6 +17,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        try {
+            com.google.android.gms.cast.framework.CastContext.getSharedInstance(this)
+        } catch (e: Exception) {
+            // Cast not available on this device (no Google Play Services)
+        }
         setContent {
             PopcornTimeTheme {
                 val systemUiController = rememberSystemUiController()

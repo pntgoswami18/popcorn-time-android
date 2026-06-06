@@ -5,10 +5,14 @@ import android.content.Intent
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.popcorntime.android.data.cast.CastManager
+import com.popcorntime.android.data.cast.DlnaRenderer
+import com.popcorntime.android.data.cast.KodiPrefsStore
 import com.popcorntime.android.data.subtitles.Subtitle
 import com.popcorntime.android.data.subtitles.SubtitleService
 import com.popcorntime.android.data.torrent.TorrentEngine
 import com.popcorntime.android.data.torrent.TorrentService
+import com.popcorntime.android.domain.model.CastState
 import com.popcorntime.android.domain.model.LibraryContentType
 import com.popcorntime.android.domain.model.LibraryItem
 import com.popcorntime.android.domain.model.StreamState
@@ -31,6 +35,10 @@ data class PlayerUiState(
     val subtitleUrl: String? = null,
     val isLoadingSubtitles: Boolean = false,
     val showSubtitlePicker: Boolean = false,
+    val showCastSheet: Boolean = false,
+    val castState: CastState = CastState.Idle,
+    val dlnaRenderers: List<DlnaRenderer> = emptyList(),
+    val kodiAddress: Pair<String, Int> = Pair("", 8080),
 )
 
 @HiltViewModel
@@ -38,6 +46,8 @@ class PlayerViewModel @Inject constructor(
     private val torrentEngine: TorrentEngine,
     private val subtitleService: SubtitleService,
     private val libraryRepository: LibraryRepository,
+    private val castManager: CastManager,
+    private val kodiPrefsStore: KodiPrefsStore,
     @ApplicationContext private val context: Context,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -54,8 +64,27 @@ class PlayerViewModel @Inject constructor(
     val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()
 
     init {
+        castManager.chromeCaster.registerSessionListener()
         startStream()
         loadSubtitles()
+        // Load saved Kodi address
+        viewModelScope.launch {
+            kodiPrefsStore.observeAddress().collect { addr ->
+                _uiState.update { it.copy(kodiAddress = addr) }
+            }
+        }
+        // Observe cast state
+        viewModelScope.launch {
+            castManager.castState.collect { cs ->
+                _uiState.update { it.copy(castState = cs) }
+            }
+        }
+        // Observe DLNA renderers (only when cast sheet is open)
+        viewModelScope.launch {
+            castManager.dlnaDiscovery.renderers.collect { renderers ->
+                _uiState.update { it.copy(dlnaRenderers = renderers) }
+            }
+        }
     }
 
     private fun startStream() {
@@ -125,9 +154,48 @@ class PlayerViewModel @Inject constructor(
         _uiState.update { it.copy(showSubtitlePicker = !it.showSubtitlePicker) }
     }
 
+    fun toggleCastSheet() {
+        val opening = !_uiState.value.showCastSheet
+        _uiState.update { it.copy(showCastSheet = opening) }
+        if (opening) castManager.dlnaDiscovery.startDiscovery()
+        else castManager.dlnaDiscovery.stopDiscovery()
+    }
+
+    fun castToChromecast() {
+        val streamUrl = (streamState.value as? StreamState.Ready)?.streamUrl ?: return
+        val title = imdbId   // ideally the movie/show title — use imdbId as fallback
+        castManager.castToChromecast(streamUrl, title)
+        _uiState.update { it.copy(showCastSheet = false) }
+    }
+
+    fun castToExternalPlayer() {
+        val streamUrl = (streamState.value as? StreamState.Ready)?.streamUrl ?: return
+        castManager.castToExternalPlayer(streamUrl)
+        _uiState.update { it.copy(showCastSheet = false) }
+    }
+
+    fun castToKodi(host: String, port: Int) {
+        val streamUrl = (streamState.value as? StreamState.Ready)?.streamUrl ?: return
+        viewModelScope.launch { kodiPrefsStore.saveAddress(host, port) }
+        castManager.castToKodi(streamUrl, host, port)
+        _uiState.update { it.copy(showCastSheet = false) }
+    }
+
+    fun castToDlna(renderer: DlnaRenderer) {
+        val streamUrl = (streamState.value as? StreamState.Ready)?.streamUrl ?: return
+        castManager.castToDlna(streamUrl, renderer)
+        _uiState.update { it.copy(showCastSheet = false) }
+    }
+
+    fun disconnectCast() {
+        castManager.disconnect()
+    }
+
     fun stopStream() {
         torrentEngine.stopCurrent()
         context.stopService(Intent(context, TorrentService::class.java))
+        castManager.disconnect()
+        castManager.dlnaDiscovery.stopDiscovery()
     }
 
     fun onPlaybackCompleted() {
@@ -166,5 +234,6 @@ class PlayerViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         stopStream()
+        castManager.chromeCaster.unregisterSessionListener()
     }
 }
