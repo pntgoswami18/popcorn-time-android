@@ -14,10 +14,10 @@ A native Android client for Popcorn Time — stream movies, TV series and anime 
 - Search by title
 - Detail page: backdrop, poster, rating, runtime, genres, synopsis
 - Quality selector (4K / 1080p / 720p / 480p) with seed/peer counts
-- Stream via BitTorrent — playback starts at 3% buffer, no full download required
+- Stream via BitTorrent — playback starts at 0.5% buffer, no full download required
 
 ### TV Series & Anime
-- Browse series and anime via the Popcorn Time TV API
+- Browse series and anime via the TVMaze API (show/episode metadata) + EZTV (torrent magnets)
 - Season/episode navigation with air dates and overviews
 - Per-episode quality picker
 
@@ -70,7 +70,7 @@ A native Android client for Popcorn Time — stream movies, TV series and anime 
 app/
 └── src/main/kotlin/com/popcorntime/android/
     ├── data/
-    │   ├── api/          # Ktor API services (YTS, Popcorn Time TV, OpenSubtitles)
+    │   ├── api/          # Ktor API services (YTS, TVMaze, EZTV, OpenSubtitles)
     │   │   └── dto/      # Serializable response DTOs
     │   ├── db/           # Room database, DAOs, entities
     │   ├── repository/   # Repository implementations
@@ -155,11 +155,11 @@ https://yrkde.link/
 https://yts.bz/
 ```
 
-### TV Series & Anime (Popcorn Time API)
-```
-https://tv-v2.api-fetch.sh/
-https://shows.api-fetch.website/
-```
+### TV Series & Anime
+- **TVMaze** (`https://api.tvmaze.com`) — free, no auth required; show and episode metadata including air dates, descriptions and artwork
+- **EZTV** (`https://eztv.re/api`) — episode torrent magnet links indexed by IMDB ID; up to 300 torrents fetched per show
+
+> The original Butter/api-fetch.sh servers (`tv-v2.api-fetch.sh`, `shows.api-fetch.website`) went offline in 2025 and have been fully replaced by the above.
 
 ### Subtitles
 - [OpenSubtitles REST API v3](https://opensubtitles.stoplight.io/docs/opensubtitles-api)
@@ -173,7 +173,7 @@ https://shows.api-fetch.website/
 |-----------|--------|
 | `INTERNET` | Stream torrents and fetch metadata |
 | `FOREGROUND_SERVICE` | Keep torrent engine alive while playing |
-| `FOREGROUND_SERVICE_DATA_TRANSFER` | Android 14+ classification for network data transfer |
+| `FOREGROUND_SERVICE_DATA_SYNC` | Android 14+ classification for background data transfer |
 | `WAKE_LOCK` | Prevent CPU sleep during active streaming |
 | `CHANGE_NETWORK_STATE` | Required by Google Cast SDK |
 | `ACCESS_WIFI_STATE` | Detect LAN IP for Kodi/DLNA stream URLs |
@@ -197,7 +197,7 @@ https://shows.api-fetch.website/
 
 - **No code signing** — sideloaded APKs may require enabling "Install from unknown sources"
 - **Trakt Client ID** — must be supplied by the developer before Trakt sync works (see setup above)
-- **Room migration** — upgrading from an older build destroys local library data (destructive migration in development builds). A proper `Migration(1, 2)` will be added before any public release.
+- **Room migration** — a proper `Migration(1, 2)` is in place; upgrading from v1 to v2 creates the `library_items` table without data loss
 - **YTS movie detail** — fetched via IMDB ID lookup; availability depends on YTS mirror uptime
 
 ---

@@ -2,6 +2,8 @@ package com.popcorntime.android.di
 
 import android.content.Context
 import androidx.room.Room
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.popcorntime.android.data.db.AppDatabase
 import com.popcorntime.android.data.db.dao.BookmarkedDao
 import com.popcorntime.android.data.db.dao.LibraryItemDao
@@ -21,6 +23,31 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
+/**
+ * Migration from v1 → v2: adds the `library_items` table.
+ *
+ * v1 had: watched, bookmarked, watchlist
+ * v2 adds: library_items (persists downloaded content for the Library tab)
+ *
+ * Using an explicit migration rather than fallbackToDestructiveMigration
+ * ensures existing watched/bookmarked/watchlist data survives app updates.
+ */
+private val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS `library_items` (
+                `imdbId` TEXT NOT NULL,
+                `title` TEXT NOT NULL,
+                `posterUrl` TEXT NOT NULL,
+                `year` TEXT NOT NULL,
+                `contentType` TEXT NOT NULL,
+                `addedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`imdbId`)
+            )"""
+        )
+    }
+}
+
 @Module
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
@@ -29,7 +56,7 @@ object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, "popcorntime.db")
-            .fallbackToDestructiveMigration()
+            .addMigrations(MIGRATION_1_2)
             .build()
 
     @Provides fun provideWatchedDao(db: AppDatabase): WatchedDao = db.watchedDao()
