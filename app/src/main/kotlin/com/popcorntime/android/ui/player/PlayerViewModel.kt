@@ -227,6 +227,8 @@ class PlayerViewModel @Inject constructor(
             currentQuality = next.quality
             currentSeason = next.season
             currentEpisode = next.episode
+            // Clear stale subtitle state before loading new content
+            _uiState.update { it.copy(selectedSubtitle = null, subtitleUrl = null) }
             loadSubtitles(next.imdbId)
             val torrent = Torrent(
                 url = next.magnet,

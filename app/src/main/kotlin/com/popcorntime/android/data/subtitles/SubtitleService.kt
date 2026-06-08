@@ -9,7 +9,6 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
-import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import com.popcorntime.android.BuildConfig
@@ -94,7 +93,7 @@ class SubtitleService constructor(
     ): List<Subtitle> = runCatching {
         val effectiveLanguages = when {
             languages != null && languages.isNotEmpty() -> languages
-            else -> runBlocking { osTokenStore.getPreferredLanguages() }.ifEmpty { null }
+            else -> osTokenStore.getPreferredLanguages().ifEmpty { null }
         }
         val baseUrl = resolveBaseUrl()
         val cleanId = imdbId.removePrefix("tt")
