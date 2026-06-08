@@ -148,9 +148,14 @@ class RemoteControlServer @Inject constructor(
     }
 
     private fun String.constantTimeEquals(other: String): Boolean {
-        if (length != other.length) return false
-        var diff = 0
-        for (i in indices) diff = diff or (this[i].code xor other[i].code)
+        // Compare against the full length of `other` regardless of `this` length,
+        // so that length-mismatch does not reveal information via timing.
+        val len = other.length
+        var diff = length xor len   // non-zero if lengths differ
+        for (i in 0 until len) {
+            val a = if (i < length) this[i].code else 0
+            diff = diff or (a xor other[i].code)
+        }
         return diff == 0
     }
 }
