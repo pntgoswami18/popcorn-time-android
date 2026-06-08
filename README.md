@@ -2,7 +2,7 @@
 
 A native Android client for Popcorn Time — stream movies, TV series and anime via BitTorrent, with Trakt.tv sync, subtitles, and a personal library.
 
-> **Status:** Phases 1–3 complete. Active development.
+> **Status:** Phases 1–4 complete. Active development.
 
 ---
 
@@ -26,6 +26,7 @@ A native Android client for Popcorn Time — stream movies, TV series and anime 
 - Subtitles via [OpenSubtitles REST API v3](https://opensubtitles.stoplight.io/docs/opensubtitles-api) — searchable CC picker in-player
 - Auto-mark watched on playback completion
 - Background torrent download with foreground service notification
+- **Cast to TV** — Chromecast (Google Cast SDK), Kodi JSON-RPC, DLNA renderers, or any external video player
 
 ### Personal Library
 - **Favourites** — heart icon on any movie or show
@@ -57,6 +58,7 @@ A native Android client for Popcorn Time — stream movies, TV series and anime 
 | Torrent engine | libtorrent4j (native JNI) |
 | Local HTTP server | NanoHTTPD (byte-range, serves torrent to ExoPlayer) |
 | Token storage | DataStore Preferences |
+| Casting | Google Cast SDK v21.5.0, NsdManager (DLNA), Kodi JSON-RPC |
 | Minimum SDK | 26 (Android 8.0) |
 | Target SDK | 34 (Android 14) |
 
@@ -173,6 +175,8 @@ https://shows.api-fetch.website/
 | `FOREGROUND_SERVICE` | Keep torrent engine alive while playing |
 | `FOREGROUND_SERVICE_DATA_TRANSFER` | Android 14+ classification for network data transfer |
 | `WAKE_LOCK` | Prevent CPU sleep during active streaming |
+| `CHANGE_NETWORK_STATE` | Required by Google Cast SDK |
+| `ACCESS_WIFI_STATE` | Detect LAN IP for Kodi/DLNA stream URLs |
 
 ---
 
@@ -183,7 +187,7 @@ https://shows.api-fetch.website/
 | 1 | ✅ Done | Movies browser, YTS API, TorrentEngine, ExoPlayer, subtitles |
 | 2 | ✅ Done | Series + Anime tabs, episode navigation, filter/search, bottom nav |
 | 3 | ✅ Done | Library tab, Favourites, Watchlist, Watched history, Trakt.tv sync |
-| 4 | Planned | Casting — Chromecast, DLNA, AirPlay, Kodi/XBMC |
+| 4 | ✅ Done | Casting — Chromecast, External Player, Kodi/XBMC, DLNA |
 | 5 | Planned | Additional torrent sources, HTTP remote control API, full OpenSubtitles auth |
 | 6 | Planned | Themes, Android TV / Fire TV layout, PiP mode, Media Session |
 
