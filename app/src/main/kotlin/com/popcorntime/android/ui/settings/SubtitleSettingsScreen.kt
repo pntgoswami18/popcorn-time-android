@@ -6,12 +6,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -139,6 +142,14 @@ fun SubtitleSettingsScreen(
                 }
             }
 
+            // ── Custom API key (always visible) ───────────────────────────────
+            HorizontalDivider()
+            ApiKeySection(
+                savedKey = state.customApiKey,
+                onSave = viewModel::saveCustomApiKey,
+                onClear = viewModel::clearCustomApiKey,
+            )
+
             // ── Language preference (always visible) ──────────────────────────
             HorizontalDivider()
             LanguageChipSection(
@@ -202,6 +213,79 @@ private fun LoginForm(
                 Spacer(Modifier.width(8.dp))
             }
             Text(if (isLoading) "Signing in..." else "Sign in")
+        }
+    }
+}
+
+@Composable
+private fun ApiKeySection(
+    savedKey: String,
+    onSave: (String) -> Unit,
+    onClear: () -> Unit,
+) {
+    var draft by remember(savedKey) { mutableStateOf(savedKey) }
+    var keyVisible by remember { mutableStateOf(false) }
+    val isDirty = draft.trim() != savedKey
+    val hasKey = savedKey.isNotBlank()
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            "API Key",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            if (hasKey)
+                "Using your personal key. Clear it to revert to the shared build-time key."
+            else
+                "Optionally provide your own OpenSubtitles API key to avoid shared-key rate limits.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedTextField(
+            value = draft,
+            onValueChange = { draft = it },
+            label = { Text("OpenSubtitles API key") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            visualTransformation = if (keyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+                IconButton(onClick = { keyVisible = !keyVisible }) {
+                    Icon(
+                        imageVector = if (keyVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                        contentDescription = if (keyVisible) "Hide key" else "Show key",
+                    )
+                }
+            },
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Button(
+                onClick = { onSave(draft) },
+                enabled = isDirty && draft.isNotBlank(),
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Save")
+            }
+            if (hasKey) {
+                OutlinedButton(
+                    onClick = {
+                        draft = ""
+                        onClear()
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error,
+                    ),
+                ) {
+                    Text("Clear")
+                }
+            }
         }
     }
 }

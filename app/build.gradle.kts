@@ -31,8 +31,6 @@ android {
 
         buildConfigField("String", "TRAKT_CLIENT_ID", "\"YOUR_TRAKT_CLIENT_ID_HERE\"")
         buildConfigField("String", "TRAKT_CLIENT_SECRET", "\"YOUR_TRAKT_CLIENT_SECRET_HERE\"")
-        buildConfigField("String", "OS_API_KEY", "\"REDACTED_API_KEY\"")
-
         val osApiKey = localProperties.getProperty("opensubtitles.api_key")
             ?: System.getenv("OPENSUBTITLES_API_KEY")
             ?: ""

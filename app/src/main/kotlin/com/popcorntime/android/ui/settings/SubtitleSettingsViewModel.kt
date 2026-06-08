@@ -20,6 +20,8 @@ data class SubtitleSettingsUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
     val preferredLanguages: List<String> = listOf("en"),
+    /** The user's custom API key as stored in DataStore (empty = using build-time default). */
+    val customApiKey: String = "",
 )
 
 @HiltViewModel
@@ -33,18 +35,22 @@ class SubtitleSettingsViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            // Load all one-shot values first
-            val username = osTokenStore.getUsername() ?: ""
-            val allowedDownloads = osTokenStore.getAllowedDownloads()
-            val languages = osTokenStore.getPreferredLanguages()
-            _uiState.update { it.copy(
-                username = username,
-                allowedDownloads = allowedDownloads,
-                preferredLanguages = languages,
-            )}
-            // Then collect the live isLoggedIn flow
             osTokenStore.isLoggedIn().collect { loggedIn ->
                 _uiState.update { it.copy(isLoggedIn = loggedIn) }
+            }
+        }
+        viewModelScope.launch {
+            val languages = osTokenStore.getPreferredLanguages()
+            val username = osTokenStore.getUsername() ?: ""
+            val allowedDownloads = osTokenStore.getAllowedDownloads()
+            val customApiKey = osTokenStore.getCustomApiKey() ?: ""
+            _uiState.update {
+                it.copy(
+                    preferredLanguages = languages,
+                    username = username,
+                    allowedDownloads = allowedDownloads,
+                    customApiKey = customApiKey,
+                )
             }
         }
     }
@@ -92,6 +98,20 @@ class SubtitleSettingsViewModel @Inject constructor(
         viewModelScope.launch {
             osTokenStore.savePreferredLanguages(languages)
             _uiState.update { it.copy(preferredLanguages = languages) }
+        }
+    }
+
+    fun saveCustomApiKey(key: String) {
+        viewModelScope.launch {
+            osTokenStore.saveCustomApiKey(key)
+            _uiState.update { it.copy(customApiKey = key.trim()) }
+        }
+    }
+
+    fun clearCustomApiKey() {
+        viewModelScope.launch {
+            osTokenStore.clearCustomApiKey()
+            _uiState.update { it.copy(customApiKey = "") }
         }
     }
 }

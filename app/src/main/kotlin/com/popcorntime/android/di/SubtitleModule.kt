@@ -35,8 +35,8 @@ object SubtitleModule {
 
     @Provides
     @Singleton
-    fun provideOsAuthService(client: HttpClient): OsAuthService =
-        OsAuthService(client)
+    fun provideOsAuthService(client: HttpClient, osTokenStore: OsTokenStore): OsAuthService =
+        OsAuthService(client, osTokenStore)
 
     @Provides
     @Singleton

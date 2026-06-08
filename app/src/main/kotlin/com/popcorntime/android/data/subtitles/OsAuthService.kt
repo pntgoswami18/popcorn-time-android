@@ -11,7 +11,6 @@ import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
-import com.popcorntime.android.BuildConfig
 import timber.log.Timber
 
 sealed class OsLoginResult {
@@ -26,16 +25,16 @@ sealed class OsLoginResult {
 
 class OsAuthService constructor(
     private val client: HttpClient,
+    private val osTokenStore: OsTokenStore,
 ) {
     companion object {
         private const val BASE_URL = "https://api.opensubtitles.com/api/v1"
-        private val API_KEY get() = BuildConfig.OS_API_KEY
     }
 
     suspend fun login(username: String, password: String): OsLoginResult {
         return try {
             val response = client.post("$BASE_URL/login") {
-                header("Api-Key", API_KEY)
+                header("Api-Key", osTokenStore.resolveApiKey())
                 contentType(ContentType.Application.Json)
                 setBody(OsLoginRequest(username = username, password = password))
             }
@@ -64,7 +63,7 @@ class OsAuthService constructor(
     suspend fun logout(token: String): Boolean {
         return try {
             val response = client.delete("$BASE_URL/logout") {
-                header("Api-Key", API_KEY)
+                header("Api-Key", osTokenStore.resolveApiKey())
                 header("Authorization", "Bearer $token")
             }
             response.status == HttpStatusCode.OK || response.status == HttpStatusCode.NoContent
