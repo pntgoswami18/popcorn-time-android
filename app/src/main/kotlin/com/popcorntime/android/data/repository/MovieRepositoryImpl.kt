@@ -86,5 +86,14 @@ private fun YtsTorrentDto.toDomain(slug: String) = Torrent(
 
 private fun buildMagnet(hash: String, slug: String, quality: String, type: String): String {
     val name = slug.split("-").joinToString(".") { it.replaceFirstChar(Char::uppercaseChar) }
-    return "magnet:?xt=urn:btih:$hash&dn=$name.$quality.$type-YTS"
+    // Include well-known public trackers so libtorrent can find peers even before DHT resolves.
+    val trackers = listOf(
+        "udp://tracker.opentrackr.org:1337/announce",
+        "udp://open.stealth.si:80/announce",
+        "udp://tracker.torrent.eu.org:451/announce",
+        "udp://tracker.dler.org:6969/announce",
+        "udp://open.tracker.cl:1337/announce",
+    )
+    val trParams = trackers.joinToString("") { "&tr=$it" }
+    return "magnet:?xt=urn:btih:$hash&dn=$name.$quality.$type-YTS$trParams"
 }

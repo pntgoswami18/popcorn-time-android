@@ -56,12 +56,25 @@ fun MainScreen() {
         modifier = Modifier.fillMaxSize(),
         bottomBar = {
             if (showBottomBar) {
+                // Determine active tab — detail screens are "children" of their parent tab
+                // even though they live as top-level routes in the flat nav graph.
+                val activeTab: Tab? = when {
+                    currentDest?.route?.startsWith("movie_detail") == true -> Tab.Movies
+                    currentDest?.route?.startsWith("show_detail") == true -> {
+                        val contentType = navBackStackEntry?.arguments?.getString("contentType") ?: "show"
+                        if (contentType == "anime") Tab.Anime else Tab.Series
+                    }
+                    else -> Tab.all.firstOrNull { t ->
+                        currentDest?.hierarchy?.any { it.route == t.route } == true
+                    }
+                }
+
                 NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                     Tab.all.forEach { tab ->
                         NavigationBarItem(
                             icon = { Icon(tab.icon, contentDescription = tab.label) },
                             label = { Text(tab.label) },
-                            selected = currentDest?.hierarchy?.any { it.route == tab.route } == true,
+                            selected = activeTab == tab,
                             onClick = {
                                 navController.navigate(tab.route) {
                                     popUpTo(navController.graph.findStartDestination().id) {

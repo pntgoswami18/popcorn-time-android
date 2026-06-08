@@ -1,8 +1,10 @@
 package com.popcorntime.android.data.repository
 
 import com.popcorntime.android.data.api.ShowApiService
-import com.popcorntime.android.data.api.dto.EpisodeDto
-import com.popcorntime.android.data.api.dto.ShowDto
+import com.popcorntime.android.data.api.ShowDetailResult
+import com.popcorntime.android.data.api.dto.EztvTorrentDto
+import com.popcorntime.android.data.api.dto.TvMazeEpisodeDto
+import com.popcorntime.android.data.api.dto.TvMazeShowDto
 import com.popcorntime.android.data.db.dao.BookmarkedDao
 import com.popcorntime.android.data.db.dao.WatchedDao
 import com.popcorntime.android.data.db.entity.BookmarkedEntity
@@ -15,6 +17,7 @@ import com.popcorntime.android.domain.model.ShowFilter
 import com.popcorntime.android.domain.repository.ShowRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.util.Calendar
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -26,14 +29,17 @@ class ShowRepositoryImpl @Inject constructor(
 ) : ShowRepository {
 
     override suspend fun getShows(filter: ShowFilter): Result<List<Show>> = runCatching {
-        api.listShows(filter).map { it.toDomain() }
+        api.listShows(filter).map { it.toSummaryDomain() }
     }
 
     override suspend fun getShowDetail(imdbId: String, type: ContentType): Result<Show> =
         runCatching { api.getShowDetail(imdbId, type).toDomain() }
 
-    override fun observeWatched(): Flow<Set<String>> = watchedDao.observeAll().map { it.toSet() }
-    override fun observeBookmarked(): Flow<Set<String>> = bookmarkedDao.observeAll().map { it.toSet() }
+    override fun observeWatched(): Flow<Set<String>> =
+        watchedDao.observeAll().map { it.toSet() }
+
+    override fun observeBookmarked(): Flow<Set<String>> =
+        bookmarkedDao.observeAll().map { it.toSet() }
 
     override suspend fun toggleWatched(imdbId: String) {
         if (watchedDao.isWatched(imdbId)) watchedDao.delete(imdbId)
@@ -46,38 +52,146 @@ class ShowRepositoryImpl @Inject constructor(
     }
 }
 
-// ── Mappers ──────────────────────────────────────────────────────────────────
+// ── Mappers ───────────────────────────────────────────────────────────────────
 
-private fun ShowDto.toDomain() = Show(
-    imdbId = imdbId,
-    tvdbId = tvdbId,
-    title = title,
-    year = year,
-    slug = slug,
-    synopsis = synopsis,
-    runtime = runtime,
-    country = country,
-    network = network,
-    airDay = airDay,
-    airTime = airTime,
-    status = status,
-    numSeasons = numSeasons,
-    rating = rating.percentage / 10.0,
-    genres = genres,
-    posterUrl = images.poster,
-    backdropUrl = images.fanart,
-    bannerUrl = images.banner,
-    episodes = episodes.map { it.toDomain() },
+/**
+ * Lightweight summary used by the browse grid — no episodes, no EZTV lookup.
+ * Uses TVMaze ID as synthetic IMDB for shows that lack one (rare).
+ */
+private fun TvMazeShowDto.toSummaryDomain() = Show(
+    imdbId     = externals?.imdb ?: "tvmaze:$id",
+    tvdbId     = externals?.thetvdb?.toString() ?: "",
+    title      = name,
+    year       = premiered?.take(4) ?: "",
+    slug       = name.slugify(),
+    synopsis   = summary?.stripHtml() ?: "",
+    runtime    = runtime?.toString() ?: averageRuntime?.toString() ?: "",
+    country    = network?.country?.name ?: webChannel?.country?.name ?: "",
+    network    = network?.name ?: webChannel?.name ?: "",
+    airDay     = "",
+    airTime    = "",
+    status     = status,
+    numSeasons = 0,
+    rating     = rating.average ?: 0.0,
+    genres     = genres,
+    posterUrl  = image?.original ?: image?.medium ?: "",
+    backdropUrl = image?.original ?: "",
+    bannerUrl  = image?.medium ?: "",
+    episodes   = emptyList(),
 )
 
-private fun EpisodeDto.toDomain() = Episode(
-    tvdbId = tvdbId,
-    season = season,
-    episode = episode,
-    title = title,
-    overview = overview,
-    firstAired = firstAired,
-    torrents = torrents.mapValues { (_, t) ->
-        EpisodeTorrent(url = t.url, seeds = t.seeds, peers = t.peers, provider = t.provider)
-    },
-)
+/** Full detail mapping including EZTV episode torrents. */
+private fun ShowDetailResult.toDomain(): Show {
+    val tvMazeShow = show
+    val imdbId = tvMazeShow.externals?.imdb ?: "tvmaze:${tvMazeShow.id}"
+
+    // season → episode → quality → best-seed EztvTorrentDto
+    val torrentIndex = buildTorrentIndex(eztvTorrents)
+
+    val episodes = tvMazeShow.embedded?.episodes.orEmpty()
+        .filter { it.number != null }           // skip unnumbered specials
+        .map { ep -> ep.toDomain(torrentIndex) }
+
+    return Show(
+        imdbId     = imdbId,
+        tvdbId     = tvMazeShow.externals?.thetvdb?.toString() ?: "",
+        title      = tvMazeShow.name,
+        year       = tvMazeShow.premiered?.take(4) ?: "",
+        slug       = tvMazeShow.name.slugify(),
+        synopsis   = tvMazeShow.summary?.stripHtml() ?: "",
+        runtime    = tvMazeShow.runtime?.toString() ?: tvMazeShow.averageRuntime?.toString() ?: "",
+        country    = tvMazeShow.network?.country?.name ?: tvMazeShow.webChannel?.country?.name ?: "",
+        network    = tvMazeShow.network?.name ?: tvMazeShow.webChannel?.name ?: "",
+        airDay     = "",
+        airTime    = "",
+        status     = tvMazeShow.status,
+        numSeasons = episodes.maxOfOrNull { it.season } ?: 0,
+        rating     = tvMazeShow.rating.average ?: 0.0,
+        genres     = tvMazeShow.genres,
+        posterUrl  = tvMazeShow.image?.original ?: tvMazeShow.image?.medium ?: "",
+        backdropUrl = tvMazeShow.image?.original ?: "",
+        bannerUrl  = tvMazeShow.image?.medium ?: "",
+        episodes   = episodes,
+    )
+}
+
+private fun TvMazeEpisodeDto.toDomain(
+    torrentIndex: Map<Int, Map<Int, Map<String, EpisodeTorrent>>>,
+): Episode {
+    val epTorrents = torrentIndex[season]?.get(number!!) ?: emptyMap()
+    return Episode(
+        tvdbId    = id,
+        season    = season,
+        episode   = number!!,
+        title     = name,
+        overview  = summary?.stripHtml() ?: "",
+        firstAired = airdate.toUnixSeconds(),
+        torrents  = epTorrents,
+    )
+}
+
+/**
+ * Builds a 3-level index: season → episode → quality → best-seeded EpisodeTorrent.
+ * Quality is inferred from the EZTV filename (4K / 1080p / 720p / 480p / SD).
+ */
+private fun buildTorrentIndex(
+    eztvTorrents: List<EztvTorrentDto>,
+): Map<Int, Map<Int, Map<String, EpisodeTorrent>>> {
+    // Accumulate best torrent per (season, episode, quality)
+    val best = mutableMapOf<Triple<Int, Int, String>, EztvTorrentDto>()
+
+    for (t in eztvTorrents) {
+        val season  = t.season.toIntOrNull()  ?: continue
+        val episode = t.episode.toIntOrNull() ?: continue
+        val quality = t.filename.detectQuality()
+        val key = Triple(season, episode, quality)
+        if ((best[key]?.seeds ?: -1) < t.seeds) best[key] = t
+    }
+
+    // Restructure to season → episode → quality → EpisodeTorrent
+    val result = mutableMapOf<Int, MutableMap<Int, MutableMap<String, EpisodeTorrent>>>()
+    for ((key, t) in best) {
+        val (season, episode, quality) = key
+        result
+            .getOrPut(season)  { mutableMapOf() }
+            .getOrPut(episode) { mutableMapOf() }[quality] = EpisodeTorrent(
+                url      = t.magnetUrl,
+                seeds    = t.seeds,
+                peers    = t.peers,
+                provider = "EZTV",
+            )
+    }
+    return result
+}
+
+// ── String utilities ──────────────────────────────────────────────────────────
+
+private fun String.stripHtml(): String =
+    replace(Regex("<[^>]*>"), "").trim()
+
+private fun String.slugify(): String =
+    lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
+
+/** Infer video quality from an EZTV filename. */
+private fun String.detectQuality(): String {
+    val fn = this.lowercase()
+    return when {
+        "2160p" in fn || "4k" in fn || "uhd" in fn -> "4K"
+        "1080p" in fn                               -> "1080p"
+        "720p"  in fn                               -> "720p"
+        "480p"  in fn                               -> "480p"
+        else                                        -> "SD"
+    }
+}
+
+/** Parse "YYYY-MM-DD" → Unix timestamp in seconds (0 on failure). */
+private fun String.toUnixSeconds(): Long {
+    if (isBlank()) return 0L
+    return try {
+        val parts = split("-")
+        Calendar.getInstance().apply {
+            set(parts[0].toInt(), parts[1].toInt() - 1, parts[2].toInt(), 0, 0, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis / 1000L
+    } catch (_: Exception) { 0L }
+}

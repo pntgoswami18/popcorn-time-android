@@ -1,29 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Popcorn Time launcher icon foreground
+  Classic design: white striped bucket with yellow popcorn kernels
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Popcorn bucket body -->
+
+    <!-- Bucket body (white trapezoid, wider at top) -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M34,60 L74,60 L68,80 L40,80 Z" />
-    <!-- Popcorn top dome -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M36,58 Q38,40 54,36 Q70,40 72,58 Z" />
-    <!-- Popcorn kernels (circles as paths) -->
-    <path
-        android:fillColor="#F5C518"
-        android:pathData="M44,35 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0" />
-    <path
-        android:fillColor="#F5C518"
-        android:pathData="M54,31 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0" />
-    <path
-        android:fillColor="#F5C518"
-        android:pathData="M64,35 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0" />
-    <!-- Red stripes on bucket -->
-    <path android:fillColor="#E53935" android:pathData="M40,62 L46,62 L44,78 L38,78 Z" />
-    <path android:fillColor="#E53935" android:pathData="M52,62 L58,62 L56,78 L50,78 Z" />
-    <path android:fillColor="#E53935" android:pathData="M64,62 L70,62 L68,78 L62,78 Z" />
+        android:pathData="M24,52 L84,52 L75,85 L33,85 Z" />
+
+    <!-- Red vertical stripes on bucket -->
+    <path android:fillColor="#E53935"
+        android:pathData="M34,52 L41,52 L37,85 L30,85 Z" />
+    <path android:fillColor="#E53935"
+        android:pathData="M51,52 L58,52 L55,85 L48,85 Z" />
+    <path android:fillColor="#E53935"
+        android:pathData="M68,52 L75,52 L72,85 L65,85 Z" />
+
+    <!-- Bucket rim band (dark red) -->
+    <path android:fillColor="#C62828"
+        android:pathData="M22,47 L86,47 L86,54 L22,54 Z" />
+
+    <!-- Popcorn kernels (circles as arc paths) -->
+    <!-- Center-left puff cx=43 cy=37 r=11 -->
+    <path android:fillColor="#FFF176"
+        android:pathData="M43,37 m -11,0 a 11,11 0 1,0 22,0 a 11,11 0 1,0 -22,0" />
+    <!-- Center-right puff cx=65 cy=37 r=11 -->
+    <path android:fillColor="#FFF9C4"
+        android:pathData="M65,37 m -11,0 a 11,11 0 1,0 22,0 a 11,11 0 1,0 -22,0" />
+    <!-- Top-center puff cx=54 cy=24 r=10 -->
+    <path android:fillColor="#FFFDE7"
+        android:pathData="M54,24 m -10,0 a 10,10 0 1,0 20,0 a 10,10 0 1,0 -20,0" />
+    <!-- Far-left puff cx=27 cy=44 r=8 -->
+    <path android:fillColor="#FFF9C4"
+        android:pathData="M27,44 m -8,0 a 8,8 0 1,0 16,0 a 8,8 0 1,0 -16,0" />
+    <!-- Far-right puff cx=81 cy=44 r=8 -->
+    <path android:fillColor="#FFF176"
+        android:pathData="M81,44 m -8,0 a 8,8 0 1,0 16,0 a 8,8 0 1,0 -16,0" />
+
 </vector>

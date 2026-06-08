@@ -50,8 +50,9 @@ class TorrentEngine @Inject constructor(
     // Track the active monitor job so we can cancel it cleanly on stopCurrent()
     private var monitorJob: kotlinx.coroutines.Job? = null
 
-    // Minimum buffered percentage before declaring Ready (mirrors desktop's readiness check)
-    private val BUFFER_THRESHOLD = 0.03f  // 3% of file
+    // Minimum buffered percentage before declaring Ready.
+    // 0.5% lets ExoPlayer begin decoding quickly; sequential mode ensures in-order delivery.
+    private val BUFFER_THRESHOLD = 0.005f  // 0.5% of torrent
 
     init { startSession() }
 
@@ -184,10 +185,12 @@ class TorrentEngine @Inject constructor(
         override fun alert(alert: Alert<*>) {
             when (alert) {
                 is MetadataReceivedAlert -> {
-                    // Cache the handle when metadata arrives so monitorProgress can use it.
-                    currentHandle = alert.handle()
-                    // libtorrent4j 2.x: TorrentHandle.name is a String property, not a method.
-                    Timber.d("Metadata received: ${alert.handle().name}")
+                    // Cache the handle and enable sequential download immediately so
+                    // ExoPlayer can read the beginning of the file as pieces arrive.
+                    val h = alert.handle()
+                    currentHandle = h
+                    try { h.setSequentialRange(0) } catch (_: Exception) { /* best-effort */ }
+                    Timber.d("Metadata received: ${h.name}")
                 }
                 is PieceFinishedAlert -> { /* progress is polled in monitorProgress */ }
                 is TorrentErrorAlert -> {
