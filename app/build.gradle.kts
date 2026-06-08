@@ -23,6 +23,7 @@ android {
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
 
         buildConfigField("String", "TRAKT_CLIENT_ID", "\"YOUR_TRAKT_CLIENT_ID_HERE\"")
+        buildConfigField("String", "TRAKT_CLIENT_SECRET", "\"YOUR_TRAKT_CLIENT_SECRET_HERE\"")
     }
 
     buildTypes {

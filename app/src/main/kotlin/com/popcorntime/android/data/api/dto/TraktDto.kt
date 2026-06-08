@@ -25,7 +25,7 @@ data class TraktTokenResponse(
 data class TraktTokenRequest(
     val code: String,
     @SerialName("client_id") val clientId: String,
-    @SerialName("client_secret") val clientSecret: String = "",
+    @SerialName("client_secret") val clientSecret: String,
     @SerialName("grant_type") val grantType: String = "urn:ietf:params:oauth:grant-type:device_code",
 )
 

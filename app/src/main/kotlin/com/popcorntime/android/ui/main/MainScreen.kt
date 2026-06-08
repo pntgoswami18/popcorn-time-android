@@ -1,5 +1,6 @@
 package com.popcorntime.android.ui.main
 
+import android.net.Uri
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -112,7 +113,7 @@ private fun MainNavHost(navController: NavHostController, modifier: Modifier = M
         // ── Movies tab ────────────────────────────────────────────────────────
         composable(Tab.Movies.route) {
             MovieBrowserScreen(
-                onMovieClick = { imdbId -> navController.navigate("movie_detail/$imdbId") },
+                onMovieClick = { imdbId -> navController.navigate("movie_detail/${Uri.encode(imdbId)}") },
             )
         }
         composable(
@@ -123,7 +124,7 @@ private fun MainNavHost(navController: NavHostController, modifier: Modifier = M
             MovieDetailScreen(
                 imdbId = imdbId,
                 onBack = { navController.popBackStack() },
-                onPlayClick = { quality -> navController.navigate("player/$imdbId/$quality") },
+                onPlayClick = { quality -> navController.navigate("player/${Uri.encode(imdbId)}/${Uri.encode(quality)}") },
             )
         }
 
@@ -131,7 +132,7 @@ private fun MainNavHost(navController: NavHostController, modifier: Modifier = M
         composable(Tab.Series.route) {
             ShowBrowserScreen(
                 contentType = ContentType.SHOW,
-                onShowClick = { imdbId -> navController.navigate("show_detail/$imdbId/show") },
+                onShowClick = { imdbId -> navController.navigate("show_detail/${Uri.encode(imdbId)}/show") },
             )
         }
         composable(
@@ -147,7 +148,7 @@ private fun MainNavHost(navController: NavHostController, modifier: Modifier = M
                 imdbId = imdbId,
                 onBack = { navController.popBackStack() },
                 onEpisodePlay = { _, season, episode, quality ->
-                    navController.navigate("player/$imdbId/$quality?season=$season&episode=$episode&contentType=$showContentType")
+                    navController.navigate("player/${Uri.encode(imdbId)}/${Uri.encode(quality)}?season=$season&episode=$episode&contentType=$showContentType")
                 },
             )
         }
@@ -156,7 +157,7 @@ private fun MainNavHost(navController: NavHostController, modifier: Modifier = M
         composable(Tab.Anime.route) {
             ShowBrowserScreen(
                 contentType = ContentType.ANIME,
-                onShowClick = { imdbId -> navController.navigate("show_detail/$imdbId/anime") },
+                onShowClick = { imdbId -> navController.navigate("show_detail/${Uri.encode(imdbId)}/anime") },
             )
         }
 
@@ -165,9 +166,9 @@ private fun MainNavHost(navController: NavHostController, modifier: Modifier = M
             LibraryScreen(
                 onItemClick = { imdbId, contentType ->
                     when (contentType) {
-                        LibraryContentType.MOVIE -> navController.navigate("movie_detail/$imdbId")
-                        LibraryContentType.SHOW -> navController.navigate("show_detail/$imdbId/show")
-                        LibraryContentType.ANIME -> navController.navigate("show_detail/$imdbId/anime")
+                        LibraryContentType.MOVIE -> navController.navigate("movie_detail/${Uri.encode(imdbId)}")
+                        LibraryContentType.SHOW -> navController.navigate("show_detail/${Uri.encode(imdbId)}/show")
+                        LibraryContentType.ANIME -> navController.navigate("show_detail/${Uri.encode(imdbId)}/anime")
                     }
                 },
                 onTraktSettings = { navController.navigate("settings/trakt") },

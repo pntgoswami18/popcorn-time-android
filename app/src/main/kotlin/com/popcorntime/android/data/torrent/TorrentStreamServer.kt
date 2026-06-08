@@ -14,7 +14,7 @@ import java.io.FileInputStream
  */
 class TorrentStreamServer : NanoHTTPD(STREAM_PORT) {
 
-    private var videoFile: File? = null
+    @Volatile private var videoFile: File? = null
 
     companion object {
         const val STREAM_PORT = 8888
@@ -60,19 +60,40 @@ class TorrentStreamServer : NanoHTTPD(STREAM_PORT) {
             } else {
                 fileLength - 1
             }
-            val length = end - start + 1
-            val fis = FileInputStream(file).apply { skip(start) }
+            if (start >= fileLength) {
+                return newFixedLengthResponse(
+                    Response.Status.RANGE_NOT_SATISFIABLE, "text/plain", "Range Not Satisfiable"
+                )
+            }
+            val clampedEnd = end.coerceAtMost(fileLength - 1)
+            val length = clampedEnd - start + 1
+            val fis = try {
+                FileInputStream(file).apply { skip(start) }
+            } catch (e: Exception) {
+                Timber.e(e, "TorrentStreamServer: failed to open file for range request")
+                return newFixedLengthResponse(
+                    Response.Status.INTERNAL_ERROR, "text/plain", "Internal Server Error"
+                )
+            }
             return newFixedLengthResponse(
                 Response.Status.PARTIAL_CONTENT, mimeType, fis, length
             ).apply {
-                addHeader("Content-Range", "bytes $start-$end/$fileLength")
+                addHeader("Content-Range", "bytes $start-$clampedEnd/$fileLength")
                 addHeader("Accept-Ranges", "bytes")
             }
         }
 
         // Full file response
+        val fis = try {
+            FileInputStream(file)
+        } catch (e: Exception) {
+            Timber.e(e, "TorrentStreamServer: failed to open file")
+            return newFixedLengthResponse(
+                Response.Status.INTERNAL_ERROR, "text/plain", "Internal Server Error"
+            )
+        }
         return newFixedLengthResponse(
-            Response.Status.OK, mimeType, FileInputStream(file), fileLength
+            Response.Status.OK, mimeType, fis, fileLength
         ).apply {
             addHeader("Accept-Ranges", "bytes")
         }

@@ -10,6 +10,8 @@ import com.popcorntime.android.domain.model.ShowFilter
 import com.popcorntime.android.domain.repository.LibraryRepository
 import com.popcorntime.android.domain.repository.ShowRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,12 +43,17 @@ class ShowBrowserViewModel @Inject constructor(
     val uiState: StateFlow<ShowBrowserUiState> = _uiState.asStateFlow()
 
     private var contentType: ContentType = ContentType.SHOW
+    private var searchDebounceJob: Job? = null
+    private var observingState = false
 
     fun init(type: ContentType) {
         if (contentType == type && _uiState.value.shows.isNotEmpty()) return
         contentType = type
         loadShows(reset = true)
-        observeState()
+        if (!observingState) {
+            observingState = true
+            observeState()
+        }
     }
 
     fun loadShows(reset: Boolean = false) {
@@ -78,14 +85,21 @@ class ShowBrowserViewModel @Inject constructor(
                             isLoading = false,
                             isLoadingMore = false,
                             currentPage = page,
-                            hasMore = newShows.size >= 20,
+                            hasMore = newShows.isNotEmpty(),
                         )
                     }
                 },
                 onFailure = { e ->
-                    _uiState.update {
-                        it.copy(isLoading = false, isLoadingMore = false,
-                            error = e.message ?: "Failed to load")
+                    val msg = e.message ?: ""
+                    if (msg.contains("404")) {
+                        _uiState.update {
+                            it.copy(isLoading = false, isLoadingMore = false, hasMore = false)
+                        }
+                    } else {
+                        _uiState.update {
+                            it.copy(isLoading = false, isLoadingMore = false,
+                                error = msg.ifBlank { "Failed to load" })
+                        }
                     }
                 },
             )
@@ -94,15 +108,21 @@ class ShowBrowserViewModel @Inject constructor(
 
     fun onSearchQueryChange(query: String) {
         _uiState.update { it.copy(searchQuery = query) }
-        loadShows(reset = true)
+        searchDebounceJob?.cancel()
+        searchDebounceJob = viewModelScope.launch {
+            delay(300)
+            loadShows(reset = true)
+        }
     }
 
     fun onGenreSelect(genre: String) {
+        searchDebounceJob?.cancel()
         _uiState.update { it.copy(selectedGenre = genre) }
         loadShows(reset = true)
     }
 
     fun onSortSelect(sort: String) {
+        searchDebounceJob?.cancel()
         _uiState.update { it.copy(selectedSort = sort) }
         loadShows(reset = true)
     }
@@ -119,7 +139,6 @@ class ShowBrowserViewModel @Inject constructor(
                 contentType = if (contentType == ContentType.ANIME) LibraryContentType.ANIME else LibraryContentType.SHOW,
                 addedAt = System.currentTimeMillis(),
             )
-            repository.toggleBookmarked(imdbId)
             libraryRepository.toggleFavourite(imdbId, metadata)
         }
     }

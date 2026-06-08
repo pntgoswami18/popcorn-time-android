@@ -60,7 +60,7 @@ object TraktModule {
     @Provides
     @Singleton
     fun provideTraktAuthService(@Named("trakt") client: HttpClient): TraktAuthService =
-        TraktAuthService(client, BuildConfig.TRAKT_CLIENT_ID)
+        TraktAuthService(client, BuildConfig.TRAKT_CLIENT_ID, BuildConfig.TRAKT_CLIENT_SECRET)
 
     @Provides
     @Singleton

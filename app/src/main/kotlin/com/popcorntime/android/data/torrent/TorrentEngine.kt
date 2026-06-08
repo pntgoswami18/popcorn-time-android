@@ -5,6 +5,7 @@ import com.popcorntime.android.domain.model.Torrent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -60,7 +61,7 @@ class TorrentEngine @Inject constructor(
     private val _state = MutableStateFlow<StreamState>(StreamState.Idle)
     val state: StateFlow<StreamState> = _state.asStateFlow()
 
-    @Volatile private var currentHandle: TorrentHandle? = null
+    private val currentHandleRef = java.util.concurrent.atomic.AtomicReference<TorrentHandle?>(null)
     private var monitorJob: kotlinx.coroutines.Job? = null
 
     // 0.5 % lets ExoPlayer begin decoding quickly; sequential mode ensures in-order delivery.
@@ -108,8 +109,7 @@ class TorrentEngine @Inject constructor(
     fun stopCurrent() {
         monitorJob?.cancel()
         monitorJob = null
-        val handle = currentHandle
-        currentHandle = null                // null BEFORE session.remove()
+        val handle = currentHandleRef.getAndSet(null) // null BEFORE session.remove()
         handle?.let { runCatching { session.remove(it) } }
         streamServer.stop()
         _state.value = StreamState.Idle
@@ -119,6 +119,7 @@ class TorrentEngine @Inject constructor(
         stopCurrent()
         session.removeListener(torrentListener)
         session.stop()
+        scope.cancel()
     }
 
     // ── Internal monitor loop ─────────────────────────────────────────────────
@@ -129,19 +130,19 @@ class TorrentEngine @Inject constructor(
 
             if (handle == null || !safeIsValid(handle)) {
                 // No torrent yet, or handle was just invalidated — wait and retry.
-                currentHandle = null
+                currentHandleRef.set(null)
                 delay(500)
                 continue
             }
 
-            currentHandle = handle
+            currentHandleRef.set(handle)
 
             // Wrap every handle call: a race between stopCurrent() and this loop
             // can still produce an INVALID_TORRENT_HANDLE even after isValid() == true.
             val status = runCatching { handle.status() }.getOrNull()
             if (status == null) {
                 Timber.w("TorrentEngine: handle invalidated during status poll, retrying")
-                currentHandle = null
+                currentHandleRef.set(null)
                 delay(500)
                 continue
             }
@@ -179,7 +180,7 @@ class TorrentEngine @Inject constructor(
 
     /** Returns the cached handle, or the first one from the swig session list. */
     private fun resolveHandle(): TorrentHandle? {
-        currentHandle?.let { return it }
+        currentHandleRef.get()?.let { return it }
         return runCatching {
             val list = session.swig().get_torrents()
             if (list.size > 0) TorrentHandle(list.get(0)) else null
@@ -204,7 +205,7 @@ class TorrentEngine @Inject constructor(
             if (it == largestIndex) Priority.DEFAULT else Priority.IGNORE
         }
         runCatching { handle.prioritizeFiles(priorities) }
-        runCatching { handle.setSequentialRange(0) }
+        runCatching { handle.setSequentialRange(0, info.numPieces() - 1) }
         val path = runCatching { handle.savePath() }.getOrNull() ?: return null
         return File(path + "/" + info.files().filePath(largestIndex))
     }
@@ -223,8 +224,8 @@ class TorrentEngine @Inject constructor(
                 is MetadataReceivedAlert -> {
                     val h = alert.handle()
                     if (safeIsValid(h)) {
-                        currentHandle = h
-                        runCatching { h.setSequentialRange(0) }
+                        currentHandleRef.set(h)
+                        runCatching { val inf = h.torrentFile(); if (inf != null) h.setSequentialRange(0, inf.numPieces() - 1) }
                         Timber.d("TorrentEngine: metadata received — ${runCatching { h.name }.getOrDefault("?")}")
                     }
                 }

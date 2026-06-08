@@ -22,6 +22,7 @@ private data class DeviceCodeRequest(val client_id: String)
 class TraktAuthService constructor(
     private val client: HttpClient,
     private val clientId: String,
+    private val clientSecret: String,
 ) {
     suspend fun requestDeviceCode(): TraktDeviceCodeResponse {
         return client.post("oauth/device/code") {
@@ -39,7 +40,7 @@ class TraktAuthService constructor(
             try {
                 val response: HttpResponse = client.post("oauth/device/token") {
                     contentType(ContentType.Application.Json)
-                    setBody(TraktTokenRequest(code = deviceCode, clientId = clientId))
+                    setBody(TraktTokenRequest(code = deviceCode, clientId = clientId, clientSecret = clientSecret))
                 }
                 when (response.status) {
                     HttpStatusCode.OK -> {

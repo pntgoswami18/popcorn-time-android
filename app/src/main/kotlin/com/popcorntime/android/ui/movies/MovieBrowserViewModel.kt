@@ -12,6 +12,8 @@ import com.popcorntime.android.domain.model.SortOption
 import com.popcorntime.android.domain.repository.LibraryRepository
 import com.popcorntime.android.domain.repository.MovieRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -43,6 +45,8 @@ class MovieBrowserViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(MovieBrowserUiState())
     val uiState: StateFlow<MovieBrowserUiState> = _uiState.asStateFlow()
+
+    private var searchDebounceJob: Job? = null
 
     init {
         loadMovies(reset = true)
@@ -99,20 +103,27 @@ class MovieBrowserViewModel @Inject constructor(
 
     fun onSearchQueryChange(query: String) {
         _uiState.update { it.copy(searchQuery = query) }
-        loadMovies(reset = true)
+        searchDebounceJob?.cancel()
+        searchDebounceJob = viewModelScope.launch {
+            delay(300)
+            loadMovies(reset = true)
+        }
     }
 
     fun onGenreSelect(genre: String) {
+        searchDebounceJob?.cancel()
         _uiState.update { it.copy(selectedGenre = genre) }
         loadMovies(reset = true)
     }
 
     fun onSortSelect(sort: SortOption) {
+        searchDebounceJob?.cancel()
         _uiState.update { it.copy(selectedSort = sort) }
         loadMovies(reset = true)
     }
 
     fun onQualitySelect(quality: String) {
+        searchDebounceJob?.cancel()
         _uiState.update { it.copy(selectedQuality = quality) }
         loadMovies(reset = true)
     }
@@ -129,7 +140,6 @@ class MovieBrowserViewModel @Inject constructor(
                 contentType = LibraryContentType.MOVIE,
                 addedAt = System.currentTimeMillis(),
             )
-            repository.toggleBookmarked(imdbId)
             libraryRepository.toggleFavourite(imdbId, metadata)
         }
     }

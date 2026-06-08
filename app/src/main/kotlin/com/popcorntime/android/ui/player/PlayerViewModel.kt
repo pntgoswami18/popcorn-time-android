@@ -52,8 +52,8 @@ class PlayerViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
-    val imdbId: String = checkNotNull(savedStateHandle["imdbId"])
-    val quality: String = checkNotNull(savedStateHandle["quality"])
+    val imdbId: String = savedStateHandle["imdbId"] ?: ""
+    val quality: String = savedStateHandle["quality"] ?: ""
     val season: Int = savedStateHandle["season"] ?: -1
     val episode: Int = savedStateHandle["episode"] ?: -1
     val contentTypeStr: String = savedStateHandle["contentType"] ?: "movie"
@@ -65,7 +65,11 @@ class PlayerViewModel @Inject constructor(
 
     init {
         castManager.chromeCaster.registerSessionListener()
-        startStream()
+        if (imdbId.isBlank()) {
+            torrentEngine.setError("Missing content identifier")
+        } else {
+            startStream()
+        }
         loadSubtitles()
         // Load saved Kodi address
         viewModelScope.launch {
