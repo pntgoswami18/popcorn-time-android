@@ -12,8 +12,8 @@ import io.ktor.http.contentType
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import timber.log.Timber
-import javax.inject.Inject
-import javax.inject.Singleton
+
+
 
 @Serializable
 data class OsSearchResponse(
@@ -59,29 +59,37 @@ data class Subtitle(
     var downloadUrl: String = "",
 )
 
-@Singleton
-class SubtitleService @Inject constructor(
+class SubtitleService constructor(
     private val client: HttpClient,
+    private val osTokenStore: OsTokenStore,
 ) {
     companion object {
-        private const val BASE_URL = "https://api.opensubtitles.com/api/v1"
+        private const val DEFAULT_BASE_URL = "https://api.opensubtitles.com/api/v1"
         private const val API_KEY = "REDACTED_API_KEY" // free public key
+    }
+
+    private suspend fun resolveBaseUrl(): String {
+        val storedBase = osTokenStore.getBaseUrl()
+        return if (!storedBase.isNullOrBlank()) "https://$storedBase/api/v1" else DEFAULT_BASE_URL
     }
 
     /**
      * Search subtitles for a movie by IMDB ID.
-     * Returns up to 5 subtitle options sorted by download count.
+     * Uses stored preferred languages when no explicit languages parameter is supplied.
+     * Returns up to 10 subtitle options sorted by download count.
      */
     suspend fun searchSubtitles(
         imdbId: String,
-        languages: List<String> = listOf("en"),
+        languages: List<String>? = null,
     ): List<Subtitle> = runCatching {
+        val effectiveLanguages = languages ?: osTokenStore.getPreferredLanguages()
+        val baseUrl = resolveBaseUrl()
         val cleanId = imdbId.removePrefix("tt")
-        val response = client.get("$BASE_URL/subtitles") {
+        val response = client.get("$baseUrl/subtitles") {
             header("Api-Key", API_KEY)
             header("User-Agent", "PopcornTimeAndroid v1.0")
             parameter("imdb_id", cleanId)
-            parameter("languages", languages.joinToString(","))
+            parameter("languages", effectiveLanguages.joinToString(","))
             parameter("order_by", "download_count")
             parameter("order_direction", "desc")
         }.body<OsSearchResponse>()
@@ -105,12 +113,17 @@ class SubtitleService @Inject constructor(
 
     /**
      * Get the direct download URL for a subtitle file.
-     * OpenSubtitles requires a separate download request per file.
+     * Uses stored auth token and base URL when the user is logged in.
      */
     suspend fun getDownloadUrl(fileId: Int): String? = runCatching {
-        val response = client.post("$BASE_URL/download") {
+        val baseUrl = resolveBaseUrl()
+        val token = osTokenStore.getToken()
+        val response = client.post("$baseUrl/download") {
             header("Api-Key", API_KEY)
             header("User-Agent", "PopcornTimeAndroid v1.0")
+            if (!token.isNullOrBlank()) {
+                header("Authorization", "Bearer $token")
+            }
             contentType(ContentType.Application.Json)
             setBody(OsDownloadRequest(fileId))
         }.body<OsDownloadResponse>()

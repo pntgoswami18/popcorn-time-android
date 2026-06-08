@@ -27,6 +27,7 @@ import com.popcorntime.android.ui.library.LibraryScreen
 import com.popcorntime.android.ui.movies.MovieBrowserScreen
 import com.popcorntime.android.ui.movies.MovieDetailScreen
 import com.popcorntime.android.ui.player.PlayerScreen
+import com.popcorntime.android.ui.settings.SubtitleSettingsScreen
 import com.popcorntime.android.ui.settings.TraktSettingsScreen
 import com.popcorntime.android.ui.shows.ShowBrowserScreen
 import com.popcorntime.android.ui.shows.ShowDetailScreen
@@ -48,9 +49,9 @@ fun MainScreen() {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDest = navBackStackEntry?.destination
 
-    // Hide bottom bar when inside the player or trakt settings
+    // Hide bottom bar when inside the player or settings screens
     val showBottomBar = currentDest?.route?.let { route ->
-        !route.startsWith("player/") && route != "settings/trakt"
+        !route.startsWith("player/") && route != "settings/trakt" && route != "settings/subtitles"
     } != false
 
     Scaffold(
@@ -172,10 +173,14 @@ private fun MainNavHost(navController: NavHostController, modifier: Modifier = M
                     }
                 },
                 onTraktSettings = { navController.navigate("settings/trakt") },
+                onSubtitleSettings = { navController.navigate("settings/subtitles") },
             )
         }
         composable("settings/trakt") {
             TraktSettingsScreen(onBack = { navController.popBackStack() })
+        }
+        composable("settings/subtitles") {
+            SubtitleSettingsScreen(onBack = { navController.popBackStack() })
         }
 
         // ── Player (shared across all tabs) ───────────────────────────────────

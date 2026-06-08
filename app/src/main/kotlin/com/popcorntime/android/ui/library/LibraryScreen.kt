@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SyncAlt
 import androidx.compose.material3.*
@@ -28,6 +29,7 @@ import com.popcorntime.android.domain.model.LibraryItem
 fun LibraryScreen(
     onItemClick: (imdbId: String, contentType: LibraryContentType) -> Unit,
     onTraktSettings: () -> Unit,
+    onSubtitleSettings: () -> Unit = {},
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -51,6 +53,9 @@ fun LibraryScreen(
                                 Icon(Icons.Default.SyncAlt, "Sync with Trakt")
                             }
                         }
+                    }
+                    IconButton(onClick = onSubtitleSettings) {
+                        Icon(Icons.Default.ClosedCaption, "Subtitle Settings")
                     }
                     IconButton(onClick = onTraktSettings) {
                         Icon(Icons.Default.Settings, "Trakt Settings")
