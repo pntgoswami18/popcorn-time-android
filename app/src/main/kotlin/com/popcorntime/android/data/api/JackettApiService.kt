@@ -34,11 +34,10 @@ class JackettApiService @Inject constructor(private val client: HttpClient) {
         apiKey: String,
         baseUrl: String,
     ): List<JackettResultDto> {
-        val fullQuery = if (season != null && episode != null) {
-            "$query S%02dE%02d".format(season, episode)
-        } else {
-            query
-        }
+        val seSuffix = if (season != null && episode != null) {
+            " " + "S%02dE%02d".format(season, episode)
+        } else ""
+        val fullQuery = query + seSuffix
         return search(
             query = fullQuery,
             category = "5000",
@@ -83,7 +82,7 @@ private fun String.detectQuality(): String {
 fun JackettResultDto.toMovieTorrent(): Torrent {
     val quality = title.detectQuality()
     return Torrent(
-        url = link,
+        url = magnetUri.ifBlank { link },
         magnet = magnetUri,
         quality = quality,
         type = "web",

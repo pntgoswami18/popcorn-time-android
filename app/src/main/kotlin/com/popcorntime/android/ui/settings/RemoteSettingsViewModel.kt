@@ -39,13 +39,16 @@ class RemoteSettingsViewModel @Inject constructor(
                 _uiState.update { it.copy(token = t) }
             }
         }
-        // Reflect live server state
-        _uiState.update { it.copy(isEnabled = server.isAlive) }
+        // Collect live server alive state
+        viewModelScope.launch {
+            server.isAliveFlow.collect { alive ->
+                _uiState.update { it.copy(isEnabled = alive) }
+            }
+        }
     }
 
     fun setEnabled(enabled: Boolean) {
         if (enabled) server.startIfNotRunning() else server.stopIfRunning()
-        _uiState.update { it.copy(isEnabled = server.isAlive) }
     }
 
     fun regenerateToken() {

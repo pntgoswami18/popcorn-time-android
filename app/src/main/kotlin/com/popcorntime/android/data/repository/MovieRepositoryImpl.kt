@@ -37,10 +37,10 @@ class MovieRepositoryImpl @Inject constructor(
                 val query = filter.queryTerm.ifBlank { filter.genre.takeIf { it != "All" } ?: "popular" }
                 val results = jackettApi.searchMovies(query, apiKey, baseUrl)
                 if (results.isNotEmpty()) {
-                    return@runCatching results.mapIndexed { index, dto ->
+                    return@runCatching results.mapIndexed { _, dto ->
                         val torrent = dto.toMovieTorrent()
                         Movie(
-                            id = index,
+                            id = dto.infoHash.ifBlank { dto.title }.hashCode().and(0x7FFFFFFF),
                             imdbId = "jackett:${dto.infoHash.ifBlank { dto.title.slugify() }}",
                             title = dto.title,
                             year = 0,

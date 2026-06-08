@@ -34,6 +34,8 @@ class TorrentService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            // Must call startForeground before stopSelf on Android 12+
+            startForeground(NOTIFICATION_ID, buildNotification("Stopping…"))
             torrentEngine.stopCurrent()
             stopSelf()
             return START_NOT_STICKY

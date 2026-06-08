@@ -9,6 +9,7 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import com.popcorntime.android.BuildConfig
@@ -70,15 +71,16 @@ class SubtitleService constructor(
     }
 
     private suspend fun resolveBaseUrl(): String {
-        val storedBase = osTokenStore.getBaseUrl()
-        return if (!storedBase.isNullOrBlank()) {
-            val clean = storedBase
-                .removePrefix("https://")
-                .removePrefix("http://")
-                .trimEnd('/')
-                .removeSuffix("/api/v1")  // strip if already present
-            "https://$clean/api/v1"
-        } else DEFAULT_BASE_URL
+        val stored = osTokenStore.getBaseUrl() ?: ""
+        if (stored.isBlank()) return DEFAULT_BASE_URL
+        // Strip any trailing /api/v1 suffix first
+        val withoutPath = stored.trimEnd('/').removeSuffix("/api/v1").trimEnd('/')
+        // Re-add /api/v1
+        return if (withoutPath.startsWith("http://") || withoutPath.startsWith("https://")) {
+            "$withoutPath/api/v1"
+        } else {
+            "https://$withoutPath/api/v1"
+        }
     }
 
     /**
@@ -90,14 +92,19 @@ class SubtitleService constructor(
         imdbId: String,
         languages: List<String>? = null,
     ): List<Subtitle> = runCatching {
-        val effectiveLanguages = languages ?: osTokenStore.getPreferredLanguages()
+        val effectiveLanguages = when {
+            languages != null && languages.isNotEmpty() -> languages
+            else -> runBlocking { osTokenStore.getPreferredLanguages() }.ifEmpty { null }
+        }
         val baseUrl = resolveBaseUrl()
         val cleanId = imdbId.removePrefix("tt")
         val response = client.get("$baseUrl/subtitles") {
             header("Api-Key", API_KEY)
             header("User-Agent", "PopcornTimeAndroid v1.0")
             parameter("imdb_id", cleanId)
-            parameter("languages", effectiveLanguages.joinToString(","))
+            if (effectiveLanguages != null) {
+                parameter("languages", effectiveLanguages.joinToString(","))
+            }
             parameter("order_by", "download_count")
             parameter("order_direction", "desc")
         }.body<OsSearchResponse>()
@@ -126,6 +133,9 @@ class SubtitleService constructor(
     suspend fun getDownloadUrl(fileId: Int): String? = runCatching {
         val baseUrl = resolveBaseUrl()
         val token = osTokenStore.getToken()
+        if (token.isNullOrBlank()) {
+            Timber.w("SubtitleService: download attempted without auth token — anonymous quota may be exhausted. Sign in via Library > CC icon.")
+        }
         val response = client.post("$baseUrl/download") {
             header("Api-Key", API_KEY)
             header("User-Agent", "PopcornTimeAndroid v1.0")

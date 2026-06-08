@@ -19,8 +19,11 @@ import com.popcorntime.android.domain.model.Show
 import com.popcorntime.android.domain.model.ShowFilter
 import com.popcorntime.android.domain.model.TorrentSource
 import com.popcorntime.android.domain.repository.ShowRepository
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withTimeout
+import timber.log.Timber
 import java.util.Calendar
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -45,13 +48,20 @@ class ShowRepositoryImpl @Inject constructor(
                 val baseUrl = sourcePrefs.getJackettUrl()
                 val apiKey = sourcePrefs.getJackettApiKey()
                 if (baseUrl.isNotBlank() && apiKey.isNotBlank()) {
-                    val jackettResults = jackettApi.searchShows(
-                        query = result.show.name,
-                        season = null,
-                        episode = null,
-                        apiKey = apiKey,
-                        baseUrl = baseUrl,
-                    )
+                    val jackettResults = try {
+                        withTimeout(15_000L) {
+                            jackettApi.searchShows(
+                                query = result.show.name,
+                                season = null,
+                                episode = null,
+                                apiKey = apiKey,
+                                baseUrl = baseUrl,
+                            )
+                        }
+                    } catch (e: TimeoutCancellationException) {
+                        Timber.w("ShowRepositoryImpl: Jackett show search timed out, falling back to EZTV")
+                        emptyList()
+                    }
                     if (jackettResults.isNotEmpty()) {
                         val sePattern = Regex("S(\\d{2})E(\\d{2})", RegexOption.IGNORE_CASE)
                         val torrentIndex = mutableMapOf<Int, MutableMap<Int, MutableMap<String, EpisodeTorrent>>>()

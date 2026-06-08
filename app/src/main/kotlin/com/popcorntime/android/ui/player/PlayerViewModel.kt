@@ -63,6 +63,12 @@ class PlayerViewModel @Inject constructor(
     val episode: Int = savedStateHandle["episode"] ?: -1
     val contentTypeStr: String = savedStateHandle["contentType"] ?: "movie"
 
+    // Mutable backing fields for the currently playing item (updated on queue advance)
+    private var currentImdbId: String = imdbId
+    private var currentQuality: String = quality
+    private var currentSeason: Int? = if (season == -1) null else season
+    private var currentEpisode: Int? = if (episode == -1) null else episode
+
     val streamState: StateFlow<StreamState> = torrentEngine.state
 
     private val _uiState = MutableStateFlow(PlayerUiState())
@@ -75,7 +81,7 @@ class PlayerViewModel @Inject constructor(
         } else {
             startStream()
         }
-        loadSubtitles()
+        loadSubtitles(currentImdbId)
         // Load saved Kodi address
         viewModelScope.launch {
             kodiPrefsStore.observeAddress().collect { addr ->
@@ -98,12 +104,12 @@ class PlayerViewModel @Inject constructor(
 
     private fun startStream() {
         // Try movie cache first
-        val movie = MovieCache.get(imdbId)
+        val movie = MovieCache.get(currentImdbId)
         if (movie != null) {
-            val torrent = movie.torrents[quality]
+            val torrent = movie.torrents[currentQuality]
                 ?: movie.torrents.values.maxByOrNull { it.seeds }
                 ?: run {
-                    torrentEngine.setError("No torrent found for quality: $quality")
+                    torrentEngine.setError("No torrent found for quality: $currentQuality")
                     return
                 }
             context.startForegroundService(Intent(context, TorrentService::class.java))
@@ -112,17 +118,17 @@ class PlayerViewModel @Inject constructor(
         }
 
         // Fall back to show cache for episode torrents
-        val show = ShowCache.get(imdbId)
+        val show = ShowCache.get(currentImdbId)
         if (show == null) {
             torrentEngine.setError("Content not found in cache")
             return
         }
-        val ep = show.episodes.firstOrNull { it.season == season && it.episode == episode }
+        val ep = show.episodes.firstOrNull { it.season == currentSeason && it.episode == currentEpisode }
         if (ep == null) {
-            torrentEngine.setError("Episode S${season}E${episode} not found")
+            torrentEngine.setError("Episode S${currentSeason}E${currentEpisode} not found")
             return
         }
-        val episodeTorrent = ep.torrents[quality] ?: ep.torrents.values.firstOrNull()
+        val episodeTorrent = ep.torrents[currentQuality] ?: ep.torrents.values.firstOrNull()
         if (episodeTorrent == null) {
             torrentEngine.setError("No torrent for this episode")
             return
@@ -130,7 +136,7 @@ class PlayerViewModel @Inject constructor(
         val torrent = Torrent(
             url = episodeTorrent.url,
             magnet = "",
-            quality = quality,
+            quality = currentQuality,
             type = "show",
             size = 0L,
             fileSize = "",
@@ -142,10 +148,10 @@ class PlayerViewModel @Inject constructor(
         torrentEngine.startStream(torrent)  // non-suspend; spawns its own coroutine internally
     }
 
-    private fun loadSubtitles() {
+    private fun loadSubtitles(id: String) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoadingSubtitles = true) }
-            val results = subtitleService.searchSubtitles(imdbId)
+            val results = subtitleService.searchSubtitles(id)
             _uiState.update { it.copy(subtitles = results, isLoadingSubtitles = false) }
         }
     }
@@ -172,9 +178,9 @@ class PlayerViewModel @Inject constructor(
 
     fun castToChromecast() {
         val streamUrl = (streamState.value as? StreamState.Ready)?.streamUrl ?: return
-        val title = MovieCache.get(imdbId)?.title
-            ?: ShowCache.get(imdbId)?.title
-            ?: imdbId
+        val title = MovieCache.get(currentImdbId)?.title
+            ?: ShowCache.get(currentImdbId)?.title
+            ?: currentImdbId
         castManager.castToChromecast(streamUrl, title)
         _uiState.update { it.copy(showCastSheet = false) }
     }
@@ -212,16 +218,21 @@ class PlayerViewModel @Inject constructor(
     fun onPlaybackCompleted() {
         viewModelScope.launch {
             val metadata = buildLibraryMetadata()
-            if (metadata != null) libraryRepository.markWatched(imdbId, metadata)
+            if (metadata != null) libraryRepository.markWatched(currentImdbId, metadata)
         }
         // Auto-advance to the next item in the queue, if any
-        val nextItem = playbackQueue.dequeue()
-        if (nextItem != null) {
+        val next = playbackQueue.dequeue()
+        if (next != null) {
+            currentImdbId = next.imdbId
+            currentQuality = next.quality
+            currentSeason = next.season
+            currentEpisode = next.episode
+            loadSubtitles(next.imdbId)
             val torrent = Torrent(
-                url = "",
-                magnet = nextItem.magnet,
-                quality = nextItem.quality,
-                type = when (nextItem.contentType) {
+                url = next.magnet,
+                magnet = next.magnet,
+                quality = next.quality,
+                type = when (next.contentType) {
                     LibraryContentType.MOVIE -> "bluray"
                     else -> "show"
                 },
@@ -237,10 +248,10 @@ class PlayerViewModel @Inject constructor(
     }
 
     private fun buildLibraryMetadata(): LibraryItem? {
-        val movie = MovieCache.get(imdbId)
+        val movie = MovieCache.get(currentImdbId)
         if (movie != null) {
             return LibraryItem(
-                imdbId = imdbId,
+                imdbId = currentImdbId,
                 title = movie.title,
                 posterUrl = movie.posterUrl,
                 year = movie.year.toString(),
@@ -248,10 +259,10 @@ class PlayerViewModel @Inject constructor(
                 addedAt = System.currentTimeMillis(),
             )
         }
-        val show = ShowCache.get(imdbId)
+        val show = ShowCache.get(currentImdbId)
         if (show != null) {
             return LibraryItem(
-                imdbId = imdbId,
+                imdbId = currentImdbId,
                 title = show.title,
                 posterUrl = show.posterUrl,
                 year = show.year,

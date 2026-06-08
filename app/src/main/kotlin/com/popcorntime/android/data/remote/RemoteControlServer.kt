@@ -2,6 +2,9 @@ package com.popcorntime.android.data.remote
 
 import com.popcorntime.android.data.torrent.TorrentEngine
 import fi.iki.elonen.NanoHTTPD
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -24,10 +27,14 @@ class RemoteControlServer @Inject constructor(
 
     @Volatile private var cachedToken: String? = null
 
+    private val _isAlive = MutableStateFlow(false)
+    val isAliveFlow: StateFlow<Boolean> = _isAlive.asStateFlow()
+
     fun startIfNotRunning() {
         if (!isAlive) {
-            cachedToken = runBlocking { tokenStore.getOrCreateToken() }
+            runBlocking { cachedToken = tokenStore.getOrCreateToken() }
             start(SOCKET_READ_TIMEOUT, false)
+            _isAlive.value = isAlive
             Timber.d("RemoteControlServer started on port $REMOTE_PORT")
         }
     }
@@ -35,6 +42,7 @@ class RemoteControlServer @Inject constructor(
     fun stopIfRunning() {
         if (isAlive) {
             stop()
+            _isAlive.value = false
             Timber.d("RemoteControlServer stopped")
         }
     }
@@ -47,7 +55,7 @@ class RemoteControlServer @Inject constructor(
         val expectedToken = cachedToken
             ?: runBlocking { tokenStore.getOrCreateToken().also { cachedToken = it } }
         val bearer = authHeader.removePrefix("Bearer ").trim()
-        if (bearer != expectedToken) {
+        if (!bearer.constantTimeEquals(expectedToken)) {
             return newFixedLengthResponse(
                 Response.Status.UNAUTHORIZED,
                 MIME_JSON,
@@ -118,17 +126,9 @@ class RemoteControlServer @Inject constructor(
 
     private fun handleQueueAdd(session: IHTTPSession): Response {
         return try {
-            val contentLength = session.headers["content-length"]?.toIntOrNull() ?: 0
-            val body = if (contentLength > 0) {
-                val bytes = ByteArray(contentLength)
-                var offset = 0
-                while (offset < contentLength) {
-                    val n = session.inputStream.read(bytes, offset, contentLength - offset)
-                    if (n == -1) break
-                    offset += n
-                }
-                String(bytes, 0, offset)
-            } else ""
+            val bodyMap = mutableMapOf<String, String>()
+            session.parseBody(bodyMap)
+            val body = bodyMap["postData"] ?: bodyMap.values.firstOrNull() ?: ""
             val item = Json { ignoreUnknownKeys = true }.decodeFromString<QueueItem>(body)
             playbackQueue.enqueue(item)
             newFixedLengthResponse(Response.Status.OK, MIME_JSON, """{"ok":true}""")
@@ -145,5 +145,12 @@ class RemoteControlServer @Inject constructor(
     private fun handleQueueClear(): Response {
         playbackQueue.clear()
         return newFixedLengthResponse(Response.Status.OK, MIME_JSON, """{"ok":true}""")
+    }
+
+    private fun String.constantTimeEquals(other: String): Boolean {
+        if (length != other.length) return false
+        var diff = 0
+        for (i in indices) diff = diff or (this[i].code xor other[i].code)
+        return diff == 0
     }
 }

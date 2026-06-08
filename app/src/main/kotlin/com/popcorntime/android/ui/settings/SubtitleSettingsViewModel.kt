@@ -33,15 +33,19 @@ class SubtitleSettingsViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            // Load all one-shot values first
+            val username = osTokenStore.getUsername() ?: ""
+            val allowedDownloads = osTokenStore.getAllowedDownloads()
+            val languages = osTokenStore.getPreferredLanguages()
+            _uiState.update { it.copy(
+                username = username,
+                allowedDownloads = allowedDownloads,
+                preferredLanguages = languages,
+            )}
+            // Then collect the live isLoggedIn flow
             osTokenStore.isLoggedIn().collect { loggedIn ->
                 _uiState.update { it.copy(isLoggedIn = loggedIn) }
             }
-        }
-        viewModelScope.launch {
-            val languages = osTokenStore.getPreferredLanguages()
-            val username = osTokenStore.getUsername() ?: ""
-            val allowedDownloads = osTokenStore.getAllowedDownloads()
-            _uiState.update { it.copy(preferredLanguages = languages, username = username, allowedDownloads = allowedDownloads) }
         }
     }
 
