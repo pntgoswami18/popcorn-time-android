@@ -31,6 +31,8 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.popcorntime.android.data.cast.DlnaRenderer
+import com.popcorntime.android.data.remote.PlaybackCommand
+import com.popcorntime.android.data.remote.PlaybackController
 import com.popcorntime.android.data.subtitles.Subtitle
 import com.popcorntime.android.domain.model.CastState
 import com.popcorntime.android.domain.model.StreamState
@@ -71,6 +73,7 @@ fun PlayerScreen(
                     streamUrl = s.streamUrl,
                     subtitleUrl = uiState.subtitleUrl,
                     viewModel = viewModel,
+                    playbackController = viewModel.playbackController,
                 )
                 StreamStatsOverlay(
                     dlSpeed = s.downloadSpeed,
@@ -155,7 +158,12 @@ fun PlayerScreen(
 
 @OptIn(UnstableApi::class)
 @Composable
-private fun ExoPlayerView(streamUrl: String, subtitleUrl: String?, viewModel: PlayerViewModel) {
+private fun ExoPlayerView(
+    streamUrl: String,
+    subtitleUrl: String?,
+    viewModel: PlayerViewModel,
+    playbackController: PlaybackController,
+) {
     val context = LocalContext.current
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
@@ -167,6 +175,33 @@ private fun ExoPlayerView(streamUrl: String, subtitleUrl: String?, viewModel: Pl
     // Release player only when the composable leaves the composition entirely
     DisposableEffect(Unit) {
         onDispose { exoPlayer.release() }
+    }
+
+    // Collect playback commands from the HTTP remote control relay
+    LaunchedEffect(playbackController) {
+        playbackController.command.collect { cmd ->
+            when (cmd) {
+                is PlaybackCommand.Play -> exoPlayer.play()
+                is PlaybackCommand.Pause -> exoPlayer.pause()
+                is PlaybackCommand.SeekTo -> exoPlayer.seekTo(cmd.positionMs)
+                is PlaybackCommand.Stop -> exoPlayer.stop()
+            }
+        }
+    }
+
+    // Report position/duration/isPlaying back to the controller so the HTTP status endpoint is accurate
+    DisposableEffect(exoPlayer) {
+        val listener = object : Player.Listener {
+            override fun onEvents(player: Player, events: Player.Events) {
+                playbackController.updatePosition(
+                    player.currentPosition,
+                    player.duration.coerceAtLeast(0),
+                    player.isPlaying,
+                )
+            }
+        }
+        exoPlayer.addListener(listener)
+        onDispose { exoPlayer.removeListener(listener) }
     }
 
     // Rebuild media item whenever stream or subtitle changes — does NOT release player

@@ -8,11 +8,14 @@ import androidx.lifecycle.viewModelScope
 import com.popcorntime.android.data.cast.CastManager
 import com.popcorntime.android.data.cast.DlnaRenderer
 import com.popcorntime.android.data.cast.KodiPrefsStore
+import com.popcorntime.android.data.remote.PlaybackController
+import com.popcorntime.android.data.remote.PlaybackQueue
 import com.popcorntime.android.data.subtitles.Subtitle
 import com.popcorntime.android.data.subtitles.SubtitleService
 import com.popcorntime.android.data.torrent.TorrentEngine
 import com.popcorntime.android.data.torrent.TorrentService
 import com.popcorntime.android.domain.model.CastState
+import com.popcorntime.android.domain.model.ContentType
 import com.popcorntime.android.domain.model.LibraryContentType
 import com.popcorntime.android.domain.model.LibraryItem
 import com.popcorntime.android.domain.model.StreamState
@@ -48,6 +51,8 @@ class PlayerViewModel @Inject constructor(
     private val libraryRepository: LibraryRepository,
     private val castManager: CastManager,
     private val kodiPrefsStore: KodiPrefsStore,
+    val playbackController: PlaybackController,
+    val playbackQueue: PlaybackQueue,
     @ApplicationContext private val context: Context,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -206,8 +211,28 @@ class PlayerViewModel @Inject constructor(
 
     fun onPlaybackCompleted() {
         viewModelScope.launch {
-            val metadata = buildLibraryMetadata() ?: return@launch
-            libraryRepository.markWatched(imdbId, metadata)
+            val metadata = buildLibraryMetadata()
+            if (metadata != null) libraryRepository.markWatched(imdbId, metadata)
+        }
+        // Auto-advance to the next item in the queue, if any
+        val nextItem = playbackQueue.dequeue()
+        if (nextItem != null) {
+            val torrent = Torrent(
+                url = "",
+                magnet = nextItem.magnet,
+                quality = nextItem.quality,
+                type = when (nextItem.contentType) {
+                    LibraryContentType.MOVIE -> "bluray"
+                    else -> "show"
+                },
+                size = 0L,
+                fileSize = "",
+                seeds = 0,
+                peers = 0,
+                hash = "",
+            )
+            context.startForegroundService(Intent(context, TorrentService::class.java))
+            torrentEngine.startStream(torrent)
         }
     }
 

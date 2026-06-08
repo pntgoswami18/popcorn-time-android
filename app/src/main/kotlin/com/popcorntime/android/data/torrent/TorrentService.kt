@@ -7,6 +7,7 @@ import android.app.Service
 import android.content.Intent
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import com.popcorntime.android.data.remote.RemoteControlServer
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -18,6 +19,7 @@ import javax.inject.Inject
 class TorrentService : Service() {
 
     @Inject lateinit var torrentEngine: TorrentEngine
+    @Inject lateinit var remoteControlServer: RemoteControlServer
 
     companion object {
         const val CHANNEL_ID = "torrent_stream"
@@ -37,6 +39,7 @@ class TorrentService : Service() {
             return START_NOT_STICKY
         }
         startForeground(NOTIFICATION_ID, buildNotification("Streaming…"))
+        remoteControlServer.startIfNotRunning()
         return START_STICKY
     }
 
@@ -44,6 +47,7 @@ class TorrentService : Service() {
 
     override fun onDestroy() {
         torrentEngine.stopCurrent()
+        remoteControlServer.stopIfRunning()
         super.onDestroy()
     }
 
