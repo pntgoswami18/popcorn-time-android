@@ -25,6 +25,6 @@ class PlaybackQueue @Inject constructor() {
         return removed
     }
 
-    fun clear() { _items.value = emptyList() }
+    fun clear() { _items.update { emptyList() } }
     fun peek(): QueueItem? = _items.value.firstOrNull()
 }

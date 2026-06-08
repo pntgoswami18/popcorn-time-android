@@ -44,17 +44,14 @@ class RemoteSettingsViewModel @Inject constructor(
     }
 
     fun setEnabled(enabled: Boolean) {
-        if (enabled) {
-            server.startIfNotRunning()
-        } else {
-            server.stopIfRunning()
-        }
-        _uiState.update { it.copy(isEnabled = enabled) }
+        if (enabled) server.startIfNotRunning() else server.stopIfRunning()
+        _uiState.update { it.copy(isEnabled = server.isAlive) }
     }
 
     fun regenerateToken() {
         viewModelScope.launch {
             val newToken = tokenStore.regenerateToken()
+            server.invalidateToken()
             _uiState.update { it.copy(token = newToken, isTokenCopied = false) }
         }
     }

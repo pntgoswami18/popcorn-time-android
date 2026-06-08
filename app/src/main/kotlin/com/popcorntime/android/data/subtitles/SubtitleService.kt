@@ -72,7 +72,11 @@ class SubtitleService constructor(
     private suspend fun resolveBaseUrl(): String {
         val storedBase = osTokenStore.getBaseUrl()
         return if (!storedBase.isNullOrBlank()) {
-            val clean = storedBase.removePrefix("https://").removePrefix("http://").trimEnd('/')
+            val clean = storedBase
+                .removePrefix("https://")
+                .removePrefix("http://")
+                .trimEnd('/')
+                .removeSuffix("/api/v1")  // strip if already present
             "https://$clean/api/v1"
         } else DEFAULT_BASE_URL
     }

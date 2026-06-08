@@ -26,7 +26,7 @@ class TorrentSourcePrefs constructor(
 
     suspend fun getShowSource(): TorrentSource {
         val storedString = dataStore.data.first()[showSourceKey] ?: TorrentSource.EZTV.name
-        return TorrentSource.entries.firstOrNull { it.name == storedString } ?: TorrentSource.YTS
+        return TorrentSource.entries.firstOrNull { it.name == storedString } ?: TorrentSource.EZTV
     }
 
     suspend fun setMovieSource(source: TorrentSource) {
@@ -59,6 +59,6 @@ class TorrentSourcePrefs constructor(
     fun observeShowSource(): Flow<TorrentSource> =
         dataStore.data.map { prefs ->
             val storedString = prefs[showSourceKey] ?: TorrentSource.EZTV.name
-            TorrentSource.entries.firstOrNull { it.name == storedString } ?: TorrentSource.YTS
+            TorrentSource.entries.firstOrNull { it.name == storedString } ?: TorrentSource.EZTV
         }
 }

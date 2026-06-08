@@ -165,6 +165,7 @@ private fun ExoPlayerView(
     playbackController: PlaybackController,
 ) {
     val context = LocalContext.current
+    var playbackStarted by remember { mutableStateOf(false) }
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
             playWhenReady = true
@@ -215,6 +216,7 @@ private fun ExoPlayerView(
             mediaItemBuilder.setSubtitleConfigurations(listOf(subtitle))
         }
         exoPlayer.setMediaItem(mediaItemBuilder.build())
+        playbackStarted = false
         exoPlayer.prepare()
     }
 
@@ -222,8 +224,12 @@ private fun ExoPlayerView(
     DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_ENDED) {
-                    viewModel.onPlaybackCompleted()
+                when (playbackState) {
+                    Player.STATE_READY -> playbackStarted = true
+                    Player.STATE_ENDED -> if (playbackStarted) {
+                        playbackStarted = false
+                        viewModel.onPlaybackCompleted()
+                    }
                 }
             }
         }
