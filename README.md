@@ -2,7 +2,7 @@
 
 A native Android client for Popcorn Time — stream movies, TV series and anime via BitTorrent, with Trakt.tv sync, subtitles, and a personal library.
 
-> **Status:** Phases 1–4 complete. Active development.
+> **Status:** Phases 1–5 complete. Active development.
 
 ---
 
@@ -164,6 +164,37 @@ https://yts.bz/
 ### Subtitles
 - [OpenSubtitles REST API v3](https://opensubtitles.stoplight.io/docs/opensubtitles-api)
 - Subtitle search by IMDB ID; download via authenticated POST `/download`
+- **Optional auth** — sign in with an OpenSubtitles account (Library → CC icon) to unlock higher download quotas and per-language preferences
+
+### Additional Torrent Sources (Jackett / Prowlarr)
+- Configure a self-hosted [Jackett](https://github.com/Jackett/Jackett) or [Prowlarr](https://github.com/Prowlarr/Prowlarr) instance under **Library → Source icon**
+- When configured, movies use Jackett indexers (category 2000) and shows use TV indexers (category 5000) instead of YTS/EZTV
+- Falls back to YTS / EZTV automatically if Jackett returns no results or times out
+
+---
+
+## HTTP Remote Control API
+
+The app exposes a local REST API on port **8889** when enabled (**Library → Remote icon**). Control playback from any script, dashboard, or automation tool on your LAN.
+
+Authentication: `Authorization: Bearer <token>` — token is shown in the Remote settings screen.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/status` | Playback state, position, duration, queue |
+| `POST` | `/play` | Resume playback |
+| `POST` | `/pause` | Pause playback |
+| `POST` | `/seek?position=<ms>` | Seek to position in milliseconds |
+| `GET` | `/queue` | List queued items |
+| `POST` | `/queue/add` | Enqueue a movie or episode (JSON body: `QueueItem`) |
+| `DELETE` | `/queue/clear` | Clear the playback queue |
+
+Example:
+```bash
+TOKEN="your-token-here"
+curl -H "Authorization: Bearer $TOKEN" http://192.168.1.x:8889/status
+curl -X POST -H "Authorization: Bearer $TOKEN" http://192.168.1.x:8889/pause
+```
 
 ---
 
@@ -188,7 +219,7 @@ https://yts.bz/
 | 2 | ✅ Done | Series + Anime tabs, episode navigation, filter/search, bottom nav |
 | 3 | ✅ Done | Library tab, Favourites, Watchlist, Watched history, Trakt.tv sync |
 | 4 | ✅ Done | Casting — Chromecast, External Player, Kodi/XBMC, DLNA |
-| 5 | Planned | Additional torrent sources, HTTP remote control API, full OpenSubtitles auth |
+| 5 | ✅ Done | Additional torrent sources (Jackett/Prowlarr), HTTP remote control API, full OpenSubtitles auth |
 | 6 | Planned | Themes, Android TV / Fire TV layout, PiP mode, Media Session |
 
 ---
