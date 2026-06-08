@@ -69,13 +69,10 @@ class ShowRepositoryImpl @Inject constructor(
                                 }
                             }
                             val ep = dto.toEpisodeTorrent()
-                            val existing = torrentIndex
-                                .getOrPut(season) { mutableMapOf() }
-                                .getOrPut(episode) { mutableMapOf() }[quality]
+                            val byQuality = torrentIndex.getOrPut(season) { mutableMapOf() }.getOrPut(episode) { mutableMapOf() }
+                            val existing = byQuality[quality]
                             if (existing == null || ep.seeds > existing.seeds) {
-                                torrentIndex
-                                    .getOrPut(season) { mutableMapOf() }
-                                    .getOrPut(episode) { mutableMapOf() }[quality] = ep
+                                byQuality[quality] = ep
                             }
                         }
                         return@runCatching result.toDomain(torrentIndex)

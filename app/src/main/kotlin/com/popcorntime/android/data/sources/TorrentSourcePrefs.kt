@@ -19,11 +19,15 @@ class TorrentSourcePrefs constructor(
     private val jackettUrlKey = stringPreferencesKey("jackett_url")
     private val jackettApiKeyKey = stringPreferencesKey("jackett_api_key")
 
-    suspend fun getMovieSource(): TorrentSource =
-        TorrentSource.valueOf(dataStore.data.first()[movieSourceKey] ?: TorrentSource.YTS.name)
+    suspend fun getMovieSource(): TorrentSource {
+        val storedString = dataStore.data.first()[movieSourceKey] ?: TorrentSource.YTS.name
+        return TorrentSource.entries.firstOrNull { it.name == storedString } ?: TorrentSource.YTS
+    }
 
-    suspend fun getShowSource(): TorrentSource =
-        TorrentSource.valueOf(dataStore.data.first()[showSourceKey] ?: TorrentSource.EZTV.name)
+    suspend fun getShowSource(): TorrentSource {
+        val storedString = dataStore.data.first()[showSourceKey] ?: TorrentSource.EZTV.name
+        return TorrentSource.entries.firstOrNull { it.name == storedString } ?: TorrentSource.YTS
+    }
 
     suspend fun setMovieSource(source: TorrentSource) {
         dataStore.edit { it[movieSourceKey] = source.name }
@@ -48,11 +52,13 @@ class TorrentSourcePrefs constructor(
 
     fun observeMovieSource(): Flow<TorrentSource> =
         dataStore.data.map { prefs ->
-            TorrentSource.valueOf(prefs[movieSourceKey] ?: TorrentSource.YTS.name)
+            val storedString = prefs[movieSourceKey] ?: TorrentSource.YTS.name
+            TorrentSource.entries.firstOrNull { it.name == storedString } ?: TorrentSource.YTS
         }
 
     fun observeShowSource(): Flow<TorrentSource> =
         dataStore.data.map { prefs ->
-            TorrentSource.valueOf(prefs[showSourceKey] ?: TorrentSource.EZTV.name)
+            val storedString = prefs[showSourceKey] ?: TorrentSource.EZTV.name
+            TorrentSource.entries.firstOrNull { it.name == storedString } ?: TorrentSource.YTS
         }
 }

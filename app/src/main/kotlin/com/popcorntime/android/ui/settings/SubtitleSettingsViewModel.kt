@@ -40,7 +40,8 @@ class SubtitleSettingsViewModel @Inject constructor(
         viewModelScope.launch {
             val languages = osTokenStore.getPreferredLanguages()
             val username = osTokenStore.getUsername() ?: ""
-            _uiState.update { it.copy(preferredLanguages = languages, username = username) }
+            val allowedDownloads = osTokenStore.getAllowedDownloads()
+            _uiState.update { it.copy(preferredLanguages = languages, username = username, allowedDownloads = allowedDownloads) }
         }
     }
 
@@ -54,6 +55,7 @@ class SubtitleSettingsViewModel @Inject constructor(
                         token = result.token,
                         baseUrl = result.baseUrl,
                     )
+                    osTokenStore.saveAllowedDownloads(result.allowedDownloads)
                     _uiState.update {
                         it.copy(
                             isLoading = false,

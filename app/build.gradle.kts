@@ -1,9 +1,16 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+}
+
+val localProperties = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) load(f.inputStream())
 }
 
 android {
@@ -24,6 +31,12 @@ android {
 
         buildConfigField("String", "TRAKT_CLIENT_ID", "\"YOUR_TRAKT_CLIENT_ID_HERE\"")
         buildConfigField("String", "TRAKT_CLIENT_SECRET", "\"YOUR_TRAKT_CLIENT_SECRET_HERE\"")
+        buildConfigField("String", "OS_API_KEY", "\"REDACTED_API_KEY\"")
+
+        val osApiKey = localProperties.getProperty("opensubtitles.api_key")
+            ?: System.getenv("OPENSUBTITLES_API_KEY")
+            ?: ""
+        buildConfigField("String", "OPENSUBTITLES_API_KEY", "\"$osApiKey\"")
     }
 
     buildTypes {

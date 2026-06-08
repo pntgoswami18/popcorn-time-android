@@ -3,6 +3,7 @@ package com.popcorntime.android.data.subtitles
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -17,6 +18,7 @@ class OsTokenStore constructor(
     private val usernameKey = stringPreferencesKey("os_username")
     private val baseUrlKey = stringPreferencesKey("os_base_url")
     private val preferredLanguagesKey = stringPreferencesKey("os_preferred_languages")
+    private val allowedDownloadsKey = intPreferencesKey("os_allowed_downloads")
 
     fun isLoggedIn(): Flow<Boolean> =
         dataStore.data.map { prefs ->
@@ -58,4 +60,13 @@ class OsTokenStore constructor(
             prefs[preferredLanguagesKey] = languages.joinToString(",")
         }
     }
+
+    suspend fun saveAllowedDownloads(count: Int) {
+        dataStore.edit { prefs ->
+            prefs[allowedDownloadsKey] = count
+        }
+    }
+
+    suspend fun getAllowedDownloads(): Int =
+        dataStore.data.first()[allowedDownloadsKey] ?: 0
 }

@@ -35,7 +35,7 @@ class JackettApiService @Inject constructor(private val client: HttpClient) {
         baseUrl: String,
     ): List<JackettResultDto> {
         val fullQuery = if (season != null && episode != null) {
-            "$query S%02d E%02d".format(season, episode)
+            "$query S%02dE%02d".format(season, episode)
         } else {
             query
         }

@@ -11,6 +11,7 @@ import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
+import com.popcorntime.android.BuildConfig
 import timber.log.Timber
 
 sealed class OsLoginResult {
@@ -28,7 +29,7 @@ class OsAuthService constructor(
 ) {
     companion object {
         private const val BASE_URL = "https://api.opensubtitles.com/api/v1"
-        private const val API_KEY = "REDACTED_API_KEY"
+        private val API_KEY get() = BuildConfig.OS_API_KEY
     }
 
     suspend fun login(username: String, password: String): OsLoginResult {

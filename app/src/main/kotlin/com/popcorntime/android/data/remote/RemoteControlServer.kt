@@ -22,8 +22,11 @@ class RemoteControlServer @Inject constructor(
         private const val MIME_JSON = "application/json"
     }
 
+    @Volatile private var cachedToken: String? = null
+
     fun startIfNotRunning() {
         if (!isAlive) {
+            cachedToken = runBlocking { tokenStore.getOrCreateToken() }
             start(SOCKET_READ_TIMEOUT, false)
             Timber.d("RemoteControlServer started on port $REMOTE_PORT")
         }
@@ -39,7 +42,8 @@ class RemoteControlServer @Inject constructor(
     override fun serve(session: IHTTPSession): Response {
         // Bearer token auth
         val authHeader = session.headers["authorization"] ?: ""
-        val expectedToken = runBlocking { tokenStore.getOrCreateToken() }
+        val expectedToken = cachedToken
+            ?: runBlocking { tokenStore.getOrCreateToken().also { cachedToken = it } }
         val bearer = authHeader.removePrefix("Bearer ").trim()
         if (bearer != expectedToken) {
             return newFixedLengthResponse(
@@ -79,18 +83,17 @@ class RemoteControlServer @Inject constructor(
     }
 
     private fun handlePlay(): Response {
-        runBlocking { playbackController.sendCommand(PlaybackCommand.Play) }
+        playbackController.command.tryEmit(PlaybackCommand.Play)
         return newFixedLengthResponse(Response.Status.OK, MIME_JSON, """{"ok":true}""")
     }
 
     private fun handlePause(): Response {
-        runBlocking { playbackController.sendCommand(PlaybackCommand.Pause) }
+        playbackController.command.tryEmit(PlaybackCommand.Pause)
         return newFixedLengthResponse(Response.Status.OK, MIME_JSON, """{"ok":true}""")
     }
 
     private fun handleSeek(session: IHTTPSession): Response {
-        val params = session.parms
-        val positionStr = params["position"]
+        val positionStr = session.parms["position"]
             ?: return newFixedLengthResponse(
                 Response.Status.BAD_REQUEST,
                 MIME_JSON,
@@ -102,7 +105,7 @@ class RemoteControlServer @Inject constructor(
                 MIME_JSON,
                 """{"error":"Invalid position value"}""",
             )
-        runBlocking { playbackController.sendCommand(PlaybackCommand.SeekTo(position)) }
+        playbackController.command.tryEmit(PlaybackCommand.SeekTo(position))
         return newFixedLengthResponse(Response.Status.OK, MIME_JSON, """{"ok":true}""")
     }
 
@@ -116,8 +119,13 @@ class RemoteControlServer @Inject constructor(
             val contentLength = session.headers["content-length"]?.toIntOrNull() ?: 0
             val body = if (contentLength > 0) {
                 val bytes = ByteArray(contentLength)
-                session.inputStream.read(bytes, 0, contentLength)
-                String(bytes, Charsets.UTF_8)
+                var offset = 0
+                while (offset < contentLength) {
+                    val n = session.inputStream.read(bytes, offset, contentLength - offset)
+                    if (n == -1) break
+                    offset += n
+                }
+                String(bytes, 0, offset)
             } else ""
             val item = Json { ignoreUnknownKeys = true }.decodeFromString<QueueItem>(body)
             playbackQueue.enqueue(item)

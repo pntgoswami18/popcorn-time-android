@@ -3,6 +3,7 @@ package com.popcorntime.android.data.remote
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -12,14 +13,16 @@ class PlaybackQueue @Inject constructor() {
     val items: StateFlow<List<QueueItem>> = _items.asStateFlow()
 
     fun enqueue(item: QueueItem) {
-        _items.value = _items.value + item
+        _items.update { it + item }
     }
 
     fun dequeue(): QueueItem? {
-        val list = _items.value
-        if (list.isEmpty()) return null
-        _items.value = list.drop(1)
-        return list.first()
+        var removed: QueueItem? = null
+        _items.update { list ->
+            removed = list.firstOrNull()
+            if (list.isEmpty()) list else list.drop(1)
+        }
+        return removed
     }
 
     fun clear() { _items.value = emptyList() }

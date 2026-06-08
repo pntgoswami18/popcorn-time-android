@@ -49,7 +49,7 @@ class RemoteSettingsViewModel @Inject constructor(
         } else {
             server.stopIfRunning()
         }
-        _uiState.update { it.copy(isEnabled = server.isAlive) }
+        _uiState.update { it.copy(isEnabled = enabled) }
     }
 
     fun regenerateToken() {

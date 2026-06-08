@@ -11,6 +11,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import com.popcorntime.android.BuildConfig
 import timber.log.Timber
 
 
@@ -65,12 +66,15 @@ class SubtitleService constructor(
 ) {
     companion object {
         private const val DEFAULT_BASE_URL = "https://api.opensubtitles.com/api/v1"
-        private const val API_KEY = "REDACTED_API_KEY" // free public key
+        private val API_KEY get() = BuildConfig.OS_API_KEY
     }
 
     private suspend fun resolveBaseUrl(): String {
         val storedBase = osTokenStore.getBaseUrl()
-        return if (!storedBase.isNullOrBlank()) "https://$storedBase/api/v1" else DEFAULT_BASE_URL
+        return if (!storedBase.isNullOrBlank()) {
+            val clean = storedBase.removePrefix("https://").removePrefix("http://").trimEnd('/')
+            "https://$clean/api/v1"
+        } else DEFAULT_BASE_URL
     }
 
     /**

@@ -41,7 +41,7 @@ class MovieRepositoryImpl @Inject constructor(
                         val torrent = dto.toMovieTorrent()
                         Movie(
                             id = index,
-                            imdbId = "",
+                            imdbId = "jackett:${dto.infoHash.ifBlank { dto.title.slugify() }}",
                             title = dto.title,
                             year = 0,
                             rating = 0.0,
@@ -66,6 +66,10 @@ class MovieRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getMovieDetail(imdbId: String): Result<Movie> = runCatching {
+        if (imdbId.startsWith("jackett:")) {
+            // Jackett-sourced movies don't have a YTS counterpart — return an error
+            error("No detail available for Jackett-sourced movie (id=$imdbId)")
+        }
         api.getMovieByImdbId(imdbId).toDomain()
     }
 
@@ -120,6 +124,9 @@ private fun YtsTorrentDto.toDomain(slug: String) = Torrent(
     peers = peers,
     hash = hash,
 )
+
+private fun String.slugify(): String =
+    lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
 
 private fun buildMagnet(hash: String, slug: String, quality: String, type: String): String {
     val name = slug.split("-").joinToString(".") { it.replaceFirstChar(Char::uppercaseChar) }
