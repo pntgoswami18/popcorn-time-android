@@ -30,4 +30,5 @@ data class Torrent(
     val seeds: Int,
     val peers: Int,
     val hash: String,
+    val source: TorrentSource = TorrentSource.YTS,
 )

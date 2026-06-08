@@ -1,19 +1,23 @@
 package com.popcorntime.android.data.repository
 
+import com.popcorntime.android.data.api.JackettApiService
 import com.popcorntime.android.data.api.ShowApiService
 import com.popcorntime.android.data.api.ShowDetailResult
 import com.popcorntime.android.data.api.dto.EztvTorrentDto
 import com.popcorntime.android.data.api.dto.TvMazeEpisodeDto
 import com.popcorntime.android.data.api.dto.TvMazeShowDto
+import com.popcorntime.android.data.api.toEpisodeTorrent
 import com.popcorntime.android.data.db.dao.BookmarkedDao
 import com.popcorntime.android.data.db.dao.WatchedDao
 import com.popcorntime.android.data.db.entity.BookmarkedEntity
 import com.popcorntime.android.data.db.entity.WatchedEntity
+import com.popcorntime.android.data.sources.TorrentSourcePrefs
 import com.popcorntime.android.domain.model.ContentType
 import com.popcorntime.android.domain.model.Episode
 import com.popcorntime.android.domain.model.EpisodeTorrent
 import com.popcorntime.android.domain.model.Show
 import com.popcorntime.android.domain.model.ShowFilter
+import com.popcorntime.android.domain.model.TorrentSource
 import com.popcorntime.android.domain.repository.ShowRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -26,6 +30,8 @@ class ShowRepositoryImpl @Inject constructor(
     private val api: ShowApiService,
     private val watchedDao: WatchedDao,
     private val bookmarkedDao: BookmarkedDao,
+    private val sourcePrefs: TorrentSourcePrefs,
+    private val jackettApi: JackettApiService,
 ) : ShowRepository {
 
     override suspend fun getShows(filter: ShowFilter): Result<List<Show>> = runCatching {
@@ -33,7 +39,51 @@ class ShowRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getShowDetail(imdbId: String, type: ContentType): Result<Show> =
-        runCatching { api.getShowDetail(imdbId, type).toDomain() }
+        runCatching {
+            val result = api.getShowDetail(imdbId, type)
+            if (sourcePrefs.getShowSource() == TorrentSource.JACKETT) {
+                val baseUrl = sourcePrefs.getJackettUrl()
+                val apiKey = sourcePrefs.getJackettApiKey()
+                if (baseUrl.isNotBlank() && apiKey.isNotBlank()) {
+                    val jackettResults = jackettApi.searchShows(
+                        query = result.show.name,
+                        season = null,
+                        episode = null,
+                        apiKey = apiKey,
+                        baseUrl = baseUrl,
+                    )
+                    if (jackettResults.isNotEmpty()) {
+                        val sePattern = Regex("S(\\d{2})E(\\d{2})", RegexOption.IGNORE_CASE)
+                        val torrentIndex = mutableMapOf<Int, MutableMap<Int, MutableMap<String, EpisodeTorrent>>>()
+                        for (dto in jackettResults) {
+                            val match = sePattern.find(dto.title) ?: continue
+                            val season = match.groupValues[1].toIntOrNull() ?: continue
+                            val episode = match.groupValues[2].toIntOrNull() ?: continue
+                            val quality = dto.title.lowercase().let { t ->
+                                when {
+                                    "2160p" in t || "4k" in t || "uhd" in t -> "4K"
+                                    "1080p" in t -> "1080p"
+                                    "720p" in t -> "720p"
+                                    "480p" in t -> "480p"
+                                    else -> "720p"
+                                }
+                            }
+                            val ep = dto.toEpisodeTorrent()
+                            val existing = torrentIndex
+                                .getOrPut(season) { mutableMapOf() }
+                                .getOrPut(episode) { mutableMapOf() }[quality]
+                            if (existing == null || ep.seeds > existing.seeds) {
+                                torrentIndex
+                                    .getOrPut(season) { mutableMapOf() }
+                                    .getOrPut(episode) { mutableMapOf() }[quality] = ep
+                            }
+                        }
+                        return@runCatching result.toDomain(torrentIndex)
+                    }
+                }
+            }
+            result.toDomain()
+        }
 
     override fun observeWatched(): Flow<Set<String>> =
         watchedDao.observeAll().map { it.toSet() }
@@ -80,13 +130,15 @@ private fun TvMazeShowDto.toSummaryDomain() = Show(
     episodes   = emptyList(),
 )
 
-/** Full detail mapping including EZTV episode torrents. */
-private fun ShowDetailResult.toDomain(): Show {
+/** Full detail mapping including EZTV episode torrents (or a pre-built index from Jackett). */
+private fun ShowDetailResult.toDomain(
+    overrideTorrentIndex: Map<Int, Map<Int, Map<String, EpisodeTorrent>>>? = null,
+): Show {
     val tvMazeShow = show
     val imdbId = tvMazeShow.externals?.imdb ?: "tvmaze:${tvMazeShow.id}"
 
     // season → episode → quality → best-seed EztvTorrentDto
-    val torrentIndex = buildTorrentIndex(eztvTorrents)
+    val torrentIndex = overrideTorrentIndex ?: buildTorrentIndex(eztvTorrents)
 
     val episodes = tvMazeShow.embedded?.episodes.orEmpty()
         .filter { it.number != null }           // skip unnumbered specials
