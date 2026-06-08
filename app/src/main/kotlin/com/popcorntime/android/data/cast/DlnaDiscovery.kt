@@ -78,7 +78,7 @@ class DlnaDiscovery(private val context: Context) {
         }
 
         try {
-            nsdManager.discoverServices("_http._tcp", NsdManager.PROTOCOL_DNS_SD, discoveryListener)
+            nsdManager.discoverServices("_upnp._tcp", NsdManager.PROTOCOL_DNS_SD, discoveryListener)
         } catch (e: Exception) {
             Timber.w(e, "DLNA discoverServices failed")
             discoveryListener = null

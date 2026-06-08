@@ -31,7 +31,7 @@ class TorrentStreamServer : NanoHTTPD(STREAM_PORT) {
         return localUrl()
     }
 
-    fun stop() {
+    override fun stop() {
         videoFile = null
         if (isAlive) {
             super.stop()

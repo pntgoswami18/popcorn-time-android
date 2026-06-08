@@ -27,7 +27,7 @@ object AppModule {
     @Provides
     @Singleton
     @Named("movieServers")
-    fun provideMovieServers(): List<String> = DEFAULT_MOVIE_SERVERS
+    fun provideMovieServers(): List<@JvmSuppressWildcards String> = DEFAULT_MOVIE_SERVERS
 
     @Provides
     @Singleton

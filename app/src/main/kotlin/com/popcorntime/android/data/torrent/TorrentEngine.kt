@@ -5,6 +5,7 @@ import com.popcorntime.android.domain.model.Torrent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -14,15 +15,13 @@ import kotlinx.coroutines.launch
 import org.libtorrent4j.AlertListener
 import org.libtorrent4j.Priority
 import org.libtorrent4j.SessionManager
-import org.libtorrent4j.SessionParams
-import org.libtorrent4j.SettingsPack
 import org.libtorrent4j.TorrentHandle
-import org.libtorrent4j.TorrentInfo
 import org.libtorrent4j.alerts.Alert
 import org.libtorrent4j.alerts.AlertType
 import org.libtorrent4j.alerts.MetadataReceivedAlert
 import org.libtorrent4j.alerts.PieceFinishedAlert
 import org.libtorrent4j.alerts.TorrentErrorAlert
+import org.libtorrent4j.swig.torrent_flags_t
 import timber.log.Timber
 import java.io.File
 import javax.inject.Inject
@@ -57,14 +56,9 @@ class TorrentEngine @Inject constructor(
     init { startSession() }
 
     private fun startSession() {
-        val settings = SettingsPack().apply {
-            setString(SettingsPack.string_types.listen_interfaces.swigValue(), "0.0.0.0:6881")
-            setBoolean(SettingsPack.bool_types.enable_dht.swigValue(), true)
-            setBoolean(SettingsPack.bool_types.enable_lsd.swigValue(), true)
-            setBoolean(SettingsPack.bool_types.enable_upnp.swigValue(), true)
-            setBoolean(SettingsPack.bool_types.enable_natpmp.swigValue(), true)
-        }
-        session.start(SessionParams(settings))
+        // libtorrent4j 2.x: start() with no args uses built-in defaults.
+        // string_types/bool_types nested enums were removed in 2.x SWIG bindings.
+        session.start()
         session.addListener(torrentListener)
         Timber.d("TorrentEngine: session started")
     }
@@ -76,7 +70,9 @@ class TorrentEngine @Inject constructor(
         monitorJob = scope.launch {
             try {
                 val uri = torrent.magnet.ifBlank { torrent.url }
-                session.download(uri, saveDir)
+                // libtorrent4j 2.x: download(String, File) overload was removed;
+                // the string/magnet overload now requires explicit flags.
+                session.download(uri, saveDir, torrent_flags_t.from_int(0))
                 monitorProgress()
             } catch (e: Exception) {
                 Timber.e(e, "Failed to start torrent stream")
@@ -86,8 +82,16 @@ class TorrentEngine @Inject constructor(
     }
 
     private suspend fun monitorProgress() {
-        while (isActive) {
-            val handle = session.torrents().firstOrNull()
+        // coroutineContext.isActive works inside a suspend fun; the bare `isActive`
+        // extension is defined on CoroutineScope and isn't in scope here.
+        while (coroutineContext.isActive) {
+            // libtorrent4j 2.x: session has no torrents() method.
+            // Use handle cached from TorrentAddedAlert, or fall back to swig list.
+            val handle: TorrentHandle? = currentHandle ?: run {
+                val swigList = session.swig().get_torrents()
+                // swigList.size is a Kotlin property mapped from Java size()
+                if (swigList.size > 0) TorrentHandle(swigList.get(0)) else null
+            }
             if (handle == null) {
                 delay(500)
                 continue
@@ -141,10 +145,12 @@ class TorrentEngine @Inject constructor(
             }
         }
         if (largestIndex < 0) return null
-        // Set sequential download + prioritise from the start
-        val priorities = Array(info.numFiles()) { if (it == largestIndex) Priority.NORMAL else Priority.IGNORE }
+        // libtorrent4j 2.x Priority enum: IGNORE, LOW, TWO, THREE, DEFAULT, FIVE, SIX, TOP_PRIORITY
+        val priorities = Array(info.numFiles()) { if (it == largestIndex) Priority.DEFAULT else Priority.IGNORE }
         handle.prioritizeFiles(priorities)
-        handle.setSequentialDownload(true)
+        // Enable sequential download: setSequentialRange(pieceIndex) sets sequential from that piece.
+        // Calling with 0 enables sequential download from the beginning of the file.
+        handle.setSequentialRange(0)
         val path = handle.savePath() + "/" + info.files().filePath(largestIndex)
         return File(path)
     }
@@ -177,12 +183,18 @@ class TorrentEngine @Inject constructor(
 
         override fun alert(alert: Alert<*>) {
             when (alert) {
-                is MetadataReceivedAlert -> Timber.d("Metadata received: ${alert.handle().name()}")
+                is MetadataReceivedAlert -> {
+                    // Cache the handle when metadata arrives so monitorProgress can use it.
+                    currentHandle = alert.handle()
+                    // libtorrent4j 2.x: TorrentHandle.name is a String property, not a method.
+                    Timber.d("Metadata received: ${alert.handle().name}")
+                }
                 is PieceFinishedAlert -> { /* progress is polled in monitorProgress */ }
                 is TorrentErrorAlert -> {
-                    val msg = alert.error().message()
+                    // libtorrent4j 2.x: ErrorCode.message is a String property, not a method.
+                    val msg = alert.error().message
                     Timber.e("Torrent error: $msg")
-                    _state.value = StreamState.Error(msg)
+                    _state.value = StreamState.Error(msg ?: "Unknown torrent error")
                 }
             }
         }

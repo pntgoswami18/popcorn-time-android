@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Popcorn bucket body -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M34,60 L74,60 L68,80 L40,80 Z" />
+    <!-- Popcorn top dome -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,58 Q38,40 54,36 Q70,40 72,58 Z" />
+    <!-- Popcorn kernels (circles as paths) -->
+    <path
+        android:fillColor="#F5C518"
+        android:pathData="M44,35 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0" />
+    <path
+        android:fillColor="#F5C518"
+        android:pathData="M54,31 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0" />
+    <path
+        android:fillColor="#F5C518"
+        android:pathData="M64,35 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0" />
+    <!-- Red stripes on bucket -->
+    <path android:fillColor="#E53935" android:pathData="M40,62 L46,62 L44,78 L38,78 Z" />
+    <path android:fillColor="#E53935" android:pathData="M52,62 L58,62 L56,78 L50,78 Z" />
+    <path android:fillColor="#E53935" android:pathData="M64,62 L70,62 L68,78 L62,78 Z" />
+</vector>

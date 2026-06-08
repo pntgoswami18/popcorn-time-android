@@ -104,7 +104,7 @@ dependencies {
     // Torrent engine (libtorrent4j native Android builds)
     implementation(libs.libtorrent4j.android.arm64)
     implementation(libs.libtorrent4j.android.arm)
-    implementation(libs.libtorrent4j.android.x86.64)
+    implementation(libs.libtorrent4j.android.x8664)
 
     // Local HTTP server (stream torrent data to ExoPlayer)
     implementation(libs.nanohttpd)
