@@ -148,7 +148,7 @@ private fun MainNavHost(navController: NavHostController, modifier: Modifier = M
                 imdbId = imdbId,
                 onBack = { navController.popBackStack() },
                 onEpisodePlay = { _, season, episode, quality ->
-                    navController.navigate("player/${Uri.encode(imdbId)}/${Uri.encode(quality)}?season=$season&episode=$episode&contentType=$showContentType")
+                    navController.navigate("player/${Uri.encode(imdbId)}/${Uri.encode(quality)}?season=$season&episode=$episode&contentType=${Uri.encode(showContentType)}")
                 },
             )
         }
