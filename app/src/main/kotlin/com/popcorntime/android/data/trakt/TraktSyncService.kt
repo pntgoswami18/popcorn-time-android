@@ -59,6 +59,22 @@ class TraktSyncService constructor(
         }
     }
 
+    suspend fun removeWatched(imdbId: String, contentType: LibraryContentType = LibraryContentType.MOVIE) {
+        val tk = token() ?: return
+        runCatching {
+            client.post("sync/history/remove") {
+                bearerAuth(tk)
+                contentType(ContentType.Application.Json)
+                val body = if (contentType == LibraryContentType.MOVIE) {
+                    TraktSyncAddRequest(movies = listOf(TraktSyncMovie(ids = TraktIds(imdb = imdbId))))
+                } else {
+                    TraktSyncAddRequest(shows = listOf(TraktSyncShow(ids = TraktIds(imdb = imdbId))))
+                }
+                setBody(body)
+            }
+        }
+    }
+
     // ── Watchlist ─────────────────────────────────────────────────────────────
 
     suspend fun pullWatchlist(): List<String> {

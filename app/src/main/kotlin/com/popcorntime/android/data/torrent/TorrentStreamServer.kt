@@ -104,10 +104,12 @@ class TorrentStreamServer : NanoHTTPD(STREAM_PORT) {
                 Response.Status.INTERNAL_ERROR, "text/plain", "Internal Server Error"
             )
         }
-        return newFixedLengthResponse(
-            Response.Status.OK, mimeType, fis, fileLength
-        ).apply {
-            addHeader("Accept-Ranges", "bytes")
+        return try {
+            newFixedLengthResponse(Response.Status.OK, mimeType, fis, fileLength)
+                .apply { addHeader("Accept-Ranges", "bytes") }
+        } catch (e: Exception) {
+            fis.close()
+            throw e
         }
     }
 

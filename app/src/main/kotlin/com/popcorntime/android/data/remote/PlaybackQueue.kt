@@ -38,8 +38,13 @@ class PlaybackQueue @Inject constructor() {
     }
 
     fun clear() {
-        _itemsRef.set(emptyList())
-        _items.value = emptyList()
+        while (true) {
+            val current = _itemsRef.get()
+            if (_itemsRef.compareAndSet(current, emptyList())) {
+                _items.value = emptyList()
+                break
+            }
+        }
     }
 
     fun peek(): QueueItem? = _itemsRef.get().firstOrNull()

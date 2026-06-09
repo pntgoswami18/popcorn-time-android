@@ -96,7 +96,8 @@ class RemoteControlServer @Inject constructor(
         val durationMs = playbackController.playerDurationMs.value
         val streamState = torrentEngine.state.value::class.simpleName ?: "Unknown"
         val queue = Json.encodeToString(playbackQueue.items.value)
-        val json = """{"isPlaying":$isPlaying,"positionMs":$positionMs,"durationMs":$durationMs,"streamState":"$streamState","queue":$queue}"""
+        val encodedState = Json.encodeToString(streamState)
+        val json = """{"isPlaying":$isPlaying,"positionMs":$positionMs,"durationMs":$durationMs,"streamState":$encodedState,"queue":$queue}"""
         return newFixedLengthResponse(Response.Status.OK, MIME_JSON, json)
     }
 

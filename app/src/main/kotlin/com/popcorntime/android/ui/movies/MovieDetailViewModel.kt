@@ -42,7 +42,7 @@ class MovieDetailViewModel @Inject constructor(
 
     fun loadMovie(movie: Movie) {
         viewModelScope.launch {
-            val watched = repository.isWatched(movie.imdbId)
+            val watched = libraryRepository.isWatched(movie.imdbId)
             val bookmarked = repository.isBookmarked(movie.imdbId)
             val inWatchlist = libraryRepository.isInWatchlist(movie.imdbId)
             val bestQuality = movie.torrents.keys
@@ -88,7 +88,12 @@ class MovieDetailViewModel @Inject constructor(
 
     fun toggleWatched() {
         viewModelScope.launch {
-            repository.toggleWatched(imdbId)
+            val movie = _uiState.value.movie ?: return@launch
+            if (_uiState.value.isWatched) {
+                libraryRepository.unmarkWatched(imdbId)
+            } else {
+                libraryRepository.markWatched(imdbId, movie.toLibraryItem())
+            }
             _uiState.update { it.copy(isWatched = !it.isWatched) }
         }
     }

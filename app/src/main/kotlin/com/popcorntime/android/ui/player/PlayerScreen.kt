@@ -209,8 +209,12 @@ private fun ExoPlayerView(
     LaunchedEffect(streamUrl, subtitleUrl) {
         val mediaItemBuilder = MediaItem.Builder().setUri(streamUrl)
         if (subtitleUrl != null) {
+            val subtitleMime = if (subtitleUrl.endsWith(".vtt", ignoreCase = true))
+                androidx.media3.common.MimeTypes.TEXT_VTT
+            else
+                androidx.media3.common.MimeTypes.APPLICATION_SUBRIP
             val subtitle = MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(subtitleUrl))
-                .setMimeType(androidx.media3.common.MimeTypes.APPLICATION_SUBRIP)
+                .setMimeType(subtitleMime)
                 .setSelectionFlags(androidx.media3.common.C.SELECTION_FLAG_DEFAULT)
                 .build()
             mediaItemBuilder.setSubtitleConfigurations(listOf(subtitle))

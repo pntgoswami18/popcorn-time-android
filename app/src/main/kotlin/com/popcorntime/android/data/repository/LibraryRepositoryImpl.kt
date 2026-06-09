@@ -102,6 +102,19 @@ class LibraryRepositoryImpl @Inject constructor(
 
     override suspend fun unmarkWatched(imdbId: String) {
         watchedDao.delete(imdbId)
+        val entity = libraryItemDao.getById(imdbId)
+        val contentType = entity?.let {
+            when (it.contentType) {
+                "movie" -> LibraryContentType.MOVIE
+                "anime" -> LibraryContentType.ANIME
+                else -> LibraryContentType.SHOW
+            }
+        } ?: LibraryContentType.MOVIE
+        try {
+            traktSyncService.removeWatched(imdbId, contentType)
+        } catch (_: Exception) {
+            // Trakt failure does not prevent local deletion
+        }
     }
 
     // ── Trakt sync ────────────────────────────────────────────────────────────
