@@ -18,6 +18,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.popcorntime.android.data.db.entity.DownloadEntity
 import com.popcorntime.android.data.torrent.DownloadManager
+import com.popcorntime.android.data.torrent.DownloadStats
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -28,6 +29,7 @@ class DownloadsViewModel @Inject constructor(
     private val downloadManager: DownloadManager,
 ) : ViewModel() {
     val downloads: StateFlow<List<DownloadEntity>> = downloadManager.downloads
+    val activeDownloadStats: StateFlow<DownloadStats?> = downloadManager.activeDownloadStats
 
     fun deleteDownload(imdbId: String) {
         viewModelScope.launch { downloadManager.deleteDownload(imdbId) }
@@ -41,6 +43,7 @@ fun DownloadsScreen(
     viewModel: DownloadsViewModel = hiltViewModel(),
 ) {
     val downloads by viewModel.downloads.collectAsStateWithLifecycle()
+    val activeStats by viewModel.activeDownloadStats.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -81,6 +84,7 @@ fun DownloadsScreen(
                 items(downloads, key = { it.imdbId }) { download ->
                     DownloadItem(
                         download = download,
+                        activeStats = activeStats?.takeIf { it.imdbId == download.imdbId },
                         onDelete = { viewModel.deleteDownload(download.imdbId) },
                     )
                 }
@@ -92,35 +96,63 @@ fun DownloadsScreen(
 @Composable
 private fun DownloadItem(
     download: DownloadEntity,
+    activeStats: DownloadStats?,
     onDelete: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(
                     text = download.title,
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
                 )
-                Text(
-                    text = if (download.completedAt != null) "Completed" else "In progress",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (download.completedAt != null)
-                        MaterialTheme.colorScheme.primary
-                    else
-                        MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Default.Delete, contentDescription = "Delete",
+                        tint = MaterialTheme.colorScheme.error)
+                }
             }
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Default.Delete, contentDescription = "Delete",
-                    tint = MaterialTheme.colorScheme.error)
+            if (download.completedAt != null) {
+                Text(
+                    "Completed",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            } else if (activeStats != null) {
+                LinearProgressIndicator(
+                    progress = { activeStats.progress },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                val pct = (activeStats.progress * 100).toInt()
+                val dlMb = activeStats.downloadedBytes / 1_048_576f
+                val totalMb = activeStats.totalBytes / 1_048_576f
+                val speedKb = activeStats.downloadSpeedBps / 1024f
+                val sizeText = if (activeStats.totalBytes > 0)
+                    "%.1f MB / %.1f MB".format(dlMb, totalMb)
+                else
+                    "%.1f MB downloaded".format(dlMb)
+                Text(
+                    "$pct% · $sizeText · %.0f KB/s".format(speedKb),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Text(
+                    "Queued",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

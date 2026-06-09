@@ -9,8 +9,11 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -18,6 +21,14 @@ import java.util.Collections
 import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
+
+data class DownloadStats(
+    val imdbId: String,
+    val progress: Float,
+    val downloadedBytes: Long,
+    val totalBytes: Long,
+    val downloadSpeedBps: Long,
+)
 
 @Singleton
 class DownloadManager @Inject constructor(
@@ -32,6 +43,9 @@ class DownloadManager @Inject constructor(
 
     private val activeDownloadImdbId: AtomicReference<String?> = AtomicReference(null)
     private val inFlightIds = Collections.synchronizedSet(mutableSetOf<String>())
+
+    private val _activeDownloadStats = MutableStateFlow<DownloadStats?>(null)
+    val activeDownloadStats: StateFlow<DownloadStats?> = _activeDownloadStats.asStateFlow()
 
     init {
         // Clean up any in-progress rows from a previous session
@@ -81,8 +95,32 @@ class DownloadManager @Inject constructor(
                 // If so, activeDownloadImdbId was already cleared — abort before the engine starts.
                 if (activeDownloadImdbId.get() != imdbId) return@launch
                 torrentEngine.startStream(torrent, saveDir)
+                // Collect live stats while the torrent is downloading
+                val statsJob = launch {
+                    torrentEngine.state.collect { state ->
+                        when (state) {
+                            is StreamState.Buffering -> _activeDownloadStats.value = DownloadStats(
+                                imdbId = imdbId,
+                                progress = state.progress,
+                                downloadedBytes = torrentEngine.downloadedBytes.value,
+                                totalBytes = torrentEngine.totalBytes.value,
+                                downloadSpeedBps = state.downloadSpeed,
+                            )
+                            is StreamState.Ready -> _activeDownloadStats.value = DownloadStats(
+                                imdbId = imdbId,
+                                progress = state.progress,
+                                downloadedBytes = torrentEngine.downloadedBytes.value,
+                                totalBytes = torrentEngine.totalBytes.value,
+                                downloadSpeedBps = state.downloadSpeed,
+                            )
+                            else -> {}
+                        }
+                    }
+                }
                 // Wait for Ready or Error state
                 val finalState = torrentEngine.state.first { it is StreamState.Ready || it is StreamState.Error }
+                statsJob.cancel()
+                _activeDownloadStats.value = null
                 if (finalState is StreamState.Error) {
                     downloadDao.delete(imdbId)
                     activeDownloadImdbId.compareAndSet(imdbId, null)
@@ -100,6 +138,7 @@ class DownloadManager @Inject constructor(
                 // (e.g. torrentEngine.startStream throws). Without this, activeDownloadImdbId
                 // would stay set permanently, causing cancelDownload for any subsequent
                 // download to fail its CAS and never call stopCurrent().
+                _activeDownloadStats.value = null
                 activeDownloadImdbId.compareAndSet(imdbId, null)
                 inFlightIds.remove(imdbId)
             }

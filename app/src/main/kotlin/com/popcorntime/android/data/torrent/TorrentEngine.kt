@@ -62,6 +62,11 @@ class TorrentEngine @Inject constructor(
     private val _state = MutableStateFlow<StreamState>(StreamState.Idle)
     val state: StateFlow<StreamState> = _state.asStateFlow()
 
+    private val _downloadedBytes = MutableStateFlow(0L)
+    private val _totalBytes = MutableStateFlow(0L)
+    val downloadedBytes: StateFlow<Long> = _downloadedBytes.asStateFlow()
+    val totalBytes: StateFlow<Long> = _totalBytes.asStateFlow()
+
     private val currentHandleRef = java.util.concurrent.atomic.AtomicReference<TorrentHandle?>(null)
     private var monitorJob: kotlinx.coroutines.Job? = null
 
@@ -179,6 +184,8 @@ class TorrentEngine @Inject constructor(
             val ulSpeed  = status.uploadRate().toLong()
             val seeds    = status.numSeeds()
             val peers    = status.numPeers()
+            _downloadedBytes.value = runCatching { status.totalWantedDone() }.getOrDefault(0L)
+            _totalBytes.value = runCatching { status.totalWanted() }.getOrDefault(0L)
 
             when (_state.value) {
                 is StreamState.Buffering -> {
