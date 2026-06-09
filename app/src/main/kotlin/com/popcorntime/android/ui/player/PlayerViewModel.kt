@@ -82,7 +82,11 @@ class PlayerViewModel @Inject constructor(
     private var currentQuality: String = quality
     private var currentSeason: Int? = if (season == -1) null else season
     private var currentEpisode: Int? = if (episode == -1) null else episode
-    private var currentContentType: LibraryContentType = LibraryContentType.MOVIE
+    private var currentContentType: LibraryContentType = when (contentTypeStr) {
+        "show" -> LibraryContentType.SHOW
+        "anime" -> LibraryContentType.ANIME
+        else -> LibraryContentType.MOVIE
+    }
 
     val streamState: StateFlow<StreamState> = torrentEngine.state
 
@@ -354,6 +358,7 @@ class PlayerViewModel @Inject constructor(
         val completedContentType = currentContentType
 
         positionSaveJob?.cancel()
+        positionSaveJob = null
         viewModelScope.launch {
             val completedKey = if ((completedSeason ?: 0) > 0)
                 "pos_${completedImdbId}_s${completedSeason}e${completedEpisode}"
