@@ -47,54 +47,57 @@ class DownloadManager @Inject constructor(
                 inFlightIds.remove(imdbId)
                 return@launch
             }
-            val saveDir = context.getExternalFilesDir("downloads") ?: context.filesDir
-            val entity = DownloadEntity(
-                imdbId = imdbId,
-                title = title,
-                magnetUrl = magnetUrl,
-                filePath = saveDir.absolutePath,
-            )
-            downloadDao.insert(entity)
-            activeDownloadImdbId.set(imdbId)
-            val torrent = Torrent(
-                url = magnetUrl,
-                magnet = magnetUrl,
-                quality = "",
-                type = "download",
-                size = 0L,
-                fileSize = "",
-                seeds = 0,
-                peers = 0,
-                hash = "",
-            )
-            torrentEngine.startStream(torrent, saveDir)
-            // Wait for Ready or Error state
-            val finalState = torrentEngine.state.first { it is StreamState.Ready || it is StreamState.Error }
-            if (finalState is StreamState.Error) {
-                downloadDao.delete(imdbId)
-                activeDownloadImdbId.compareAndSet(imdbId, null)
-                inFlightIds.remove(imdbId)
-                return@launch
-            }
-            // Ready path
-            if (finalState is StreamState.Ready) {
-                val videoFilePath = torrentEngine.getVideoFilePath() ?: saveDir.absolutePath
-                val updatedEntity = entity.copy(
-                    filePath = videoFilePath,
-                    completedAt = System.currentTimeMillis(),
+            try {
+                val saveDir = context.getExternalFilesDir("downloads") ?: context.filesDir
+                val entity = DownloadEntity(
+                    imdbId = imdbId,
+                    title = title,
+                    magnetUrl = magnetUrl,
+                    filePath = saveDir.absolutePath,
                 )
-                downloadDao.insert(updatedEntity)
-                activeDownloadImdbId.compareAndSet(imdbId, null)
+                downloadDao.insert(entity)
+                activeDownloadImdbId.set(imdbId)
+                val torrent = Torrent(
+                    url = magnetUrl,
+                    magnet = magnetUrl,
+                    quality = "",
+                    type = "download",
+                    size = 0L,
+                    fileSize = "",
+                    seeds = 0,
+                    peers = 0,
+                    hash = "",
+                )
+                torrentEngine.startStream(torrent, saveDir)
+                // Wait for Ready or Error state
+                val finalState = torrentEngine.state.first { it is StreamState.Ready || it is StreamState.Error }
+                if (finalState is StreamState.Error) {
+                    downloadDao.delete(imdbId)
+                    activeDownloadImdbId.compareAndSet(imdbId, null)
+                    return@launch
+                }
+                // Ready path — use markComplete (UPDATE) so a pre-existing row is updated
+                // correctly regardless of the DAO's OnConflictStrategy.
+                if (finalState is StreamState.Ready) {
+                    val videoFilePath = torrentEngine.getVideoFilePath() ?: saveDir.absolutePath
+                    downloadDao.markComplete(imdbId, videoFilePath, System.currentTimeMillis())
+                    activeDownloadImdbId.compareAndSet(imdbId, null)
+                }
+            } finally {
+                // Always remove from inFlightIds, even if an uncaught exception escapes above,
+                // so future download attempts for this title are not permanently blocked.
+                inFlightIds.remove(imdbId)
             }
-            inFlightIds.remove(imdbId)
         }
     }
 
     fun cancelDownload(imdbId: String) {
         scope.launch {
-            if (activeDownloadImdbId.get() == imdbId) {
+            // compareAndSet atomically clears the active-ID only when it still matches,
+            // preventing a TOCTOU race where another coroutine changes activeDownloadImdbId
+            // between our read and the stopCurrent() call.
+            if (activeDownloadImdbId.compareAndSet(imdbId, null)) {
                 torrentEngine.stopCurrent()
-                activeDownloadImdbId.set(null)
             }
             downloadDao.delete(imdbId)
         }

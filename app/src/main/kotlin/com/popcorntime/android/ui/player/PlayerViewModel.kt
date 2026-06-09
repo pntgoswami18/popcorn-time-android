@@ -390,7 +390,8 @@ class PlayerViewModel @Inject constructor(
                     delay(1_000)
                     _countdownSeconds.value = i
                 }
-                countdownJob = null
+                // Do NOT self-null countdownJob here — a new countdown may have been assigned
+                // before this coroutine body executes; nulling here would orphan the new reference.
                 _countdownSeconds.value = null
                 val item = pendingNextItem ?: return@launch
                 pendingNextItem = null

@@ -140,10 +140,10 @@ class ShowDetailViewModel @Inject constructor(
                 )
                 libraryRepository.markWatched(epKey, epItem)
             }
-            val watchedIds = libraryRepository.observeWatched().first().map { it.imdbId }.toSet()
-            val epKeys = show.episodes.map { ep -> "${show.imdbId}_s${ep.season}e${ep.episode}" }
-            val allWatched = epKeys.isNotEmpty() && epKeys.all { it in watchedIds }
-            _uiState.update { it.copy(allWatched = allWatched) }
+            // All markWatched calls above completed without throwing, so every episode is
+            // now written. Set allWatched directly rather than re-querying the DB, which
+            // may not yet reflect all writes when first() emits.
+            _uiState.update { it.copy(allWatched = true) }
         }
     }
 

@@ -17,4 +17,7 @@ interface DownloadDao {
 
     @Query("DELETE FROM downloads WHERE completedAt IS NULL")
     suspend fun deleteIncomplete()
+
+    @Query("UPDATE downloads SET filePath = :filePath, completedAt = :completedAt WHERE imdbId = :imdbId")
+    suspend fun markComplete(imdbId: String, filePath: String?, completedAt: Long)
 }
