@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Allow cleartext HTTP only for the local torrent stream server (NanoHTTPD on 127.0.0.1:8888).
+    All other traffic remains HTTPS-only. Without this, Android 9+ blocks ExoPlayer from
+    connecting to http://127.0.0.1:8888/ even though the same URL works in external players
+    (which run in their own process with their own network security policy).
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>
