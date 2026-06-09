@@ -31,6 +31,13 @@ class DownloadManager @Inject constructor(
 
     private val activeDownloadImdbId: AtomicReference<String?> = AtomicReference(null)
 
+    init {
+        // Clean up any in-progress rows from a previous session
+        scope.launch {
+            downloadDao.deleteIncomplete()
+        }
+    }
+
     fun startDownload(imdbId: String, title: String, magnetUrl: String) {
         scope.launch {
             if (downloads.value.any { it.imdbId == imdbId }) return@launch  // already tracked
@@ -55,9 +62,15 @@ class DownloadManager @Inject constructor(
                 hash = "",
             )
             torrentEngine.startStream(torrent, saveDir)
-            // Wait for Ready state to capture actual file path
-            val readyState = torrentEngine.state.first { it is StreamState.Ready }
-            if (readyState is StreamState.Ready) {
+            // Wait for Ready or Error state
+            val finalState = torrentEngine.state.first { it is StreamState.Ready || it is StreamState.Error }
+            if (finalState is StreamState.Error) {
+                downloadDao.delete(imdbId)
+                activeDownloadImdbId.compareAndSet(imdbId, null)
+                return@launch
+            }
+            // Ready path
+            if (finalState is StreamState.Ready) {
                 val videoFilePath = torrentEngine.getVideoFilePath() ?: saveDir.absolutePath
                 val updatedEntity = entity.copy(
                     filePath = videoFilePath,

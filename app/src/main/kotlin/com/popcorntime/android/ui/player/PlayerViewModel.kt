@@ -313,6 +313,9 @@ class PlayerViewModel @Inject constructor(
         positionSaveJob?.cancel()
         resumeJob?.cancel()
         resumeJob = null
+        countdownJob?.cancel()
+        countdownJob = null
+        pendingNextItem = null
         torrentEngine.stopCurrent()
         context.stopService(Intent(context, TorrentService::class.java))
         castManager.disconnect()
@@ -450,7 +453,7 @@ class PlayerViewModel @Inject constructor(
                 title = show.title,
                 posterUrl = show.posterUrl,
                 year = show.year,
-                contentType = if (contentTypeStr == "anime") LibraryContentType.ANIME else LibraryContentType.SHOW,
+                contentType = currentContentType,
                 addedAt = System.currentTimeMillis(),
             )
         }

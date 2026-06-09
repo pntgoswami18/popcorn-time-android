@@ -51,6 +51,14 @@ fun ShowDetailScreen(
                 },
                 actions = {
                     state.show?.let {
+                        IconButton(onClick = viewModel::toggleWatched) {
+                            Icon(
+                                imageVector = if (state.isWatched) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                contentDescription = if (state.isWatched) "Mark unwatched" else "Mark watched",
+                                tint = if (state.isWatched) MaterialTheme.colorScheme.primary
+                                       else LocalContentColor.current,
+                            )
+                        }
                         IconButton(onClick = viewModel::toggleBookmark) {
                             Icon(
                                 if (state.isBookmarked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
