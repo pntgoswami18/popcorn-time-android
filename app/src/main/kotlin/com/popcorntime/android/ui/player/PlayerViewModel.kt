@@ -212,7 +212,9 @@ class PlayerViewModel @Inject constructor(
                 }
                 startPositionSaveLoop()
             }
-            resumeJob = null
+            // Do NOT self-null resumeJob here: a rapid queue advance may have already
+            // replaced resumeJob with a new reference; nulling it here would orphan the
+            // new job and make it un-cancellable.
         }
     }
 
