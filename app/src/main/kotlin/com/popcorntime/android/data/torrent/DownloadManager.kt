@@ -56,6 +56,13 @@ class DownloadManager @Inject constructor(
                     filePath = saveDir.absolutePath,
                 )
                 downloadDao.insert(entity)
+                // Check if cancelDownload fired while we were persisting to DB (before
+                // activeDownloadImdbId was set). cancelDownload removes from inFlightIds as a
+                // cancellation signal, so if we're no longer in the set we must abort.
+                if (!inFlightIds.contains(imdbId)) {
+                    downloadDao.delete(imdbId)
+                    return@launch
+                }
                 activeDownloadImdbId.set(imdbId)
                 val torrent = Torrent(
                     url = magnetUrl,
@@ -95,6 +102,10 @@ class DownloadManager @Inject constructor(
     }
 
     fun cancelDownload(imdbId: String) {
+        // Remove from inFlightIds first — acts as a cancellation signal so that a concurrent
+        // startDownload coroutine still between inFlightIds.add and activeDownloadImdbId.set
+        // will detect the cancellation and abort before starting the torrent engine.
+        inFlightIds.remove(imdbId)
         scope.launch {
             // compareAndSet atomically clears the active-ID only when it still matches,
             // preventing a TOCTOU race where another coroutine changes activeDownloadImdbId
