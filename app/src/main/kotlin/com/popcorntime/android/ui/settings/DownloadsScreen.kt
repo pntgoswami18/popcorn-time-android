@@ -1,5 +1,6 @@
 package com.popcorntime.android.ui.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,6 +23,7 @@ import com.popcorntime.android.data.torrent.DownloadStats
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import java.io.File
 import javax.inject.Inject
 
 @HiltViewModel
@@ -40,6 +42,7 @@ class DownloadsViewModel @Inject constructor(
 @Composable
 fun DownloadsScreen(
     onBack: () -> Unit,
+    onPlayDownload: (localUri: String) -> Unit = {},
     viewModel: DownloadsViewModel = hiltViewModel(),
 ) {
     val downloads by viewModel.downloads.collectAsStateWithLifecycle()
@@ -85,6 +88,9 @@ fun DownloadsScreen(
                     DownloadItem(
                         download = download,
                         activeStats = activeStats?.takeIf { it.imdbId == download.imdbId },
+                        onPlay = {
+                            downloadPlayableUri(download.filePath)?.let(onPlayDownload)
+                        },
                         onDelete = { viewModel.deleteDownload(download.imdbId) },
                     )
                 }
@@ -97,9 +103,21 @@ fun DownloadsScreen(
 private fun DownloadItem(
     download: DownloadEntity,
     activeStats: DownloadStats?,
+    onPlay: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    val isPlayable = isDownloadPlayable(download)
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (isPlayable) {
+                    Modifier.clickable(onClick = onPlay)
+                } else {
+                    Modifier
+                },
+            ),
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -111,13 +129,21 @@ private fun DownloadItem(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = download.title,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = download.title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (download.quality.isNotBlank()) {
+                        Text(
+                            text = download.quality,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
                 IconButton(onClick = onDelete) {
                     Icon(Icons.Default.Delete, contentDescription = "Delete",
                         tint = MaterialTheme.colorScheme.error)
@@ -156,4 +182,18 @@ private fun DownloadItem(
             }
         }
     }
+}
+
+private fun isDownloadPlayable(download: DownloadEntity): Boolean {
+    if (download.completedAt == null || download.filePath.isNullOrBlank()) return false
+    val file = File(download.filePath)
+    return file.isFile && file.length() > 0L
+}
+
+private fun downloadPlayableUri(filePath: String?): String? {
+    if (filePath.isNullOrBlank()) return null
+    if (filePath.startsWith("content://") || filePath.startsWith("file://")) {
+        return filePath
+    }
+    return File(filePath).toURI().toString()
 }

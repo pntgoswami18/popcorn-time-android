@@ -7,14 +7,8 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ClosedCaption
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.SettingsRemote
-import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.SyncAlt
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,13 +27,7 @@ import com.popcorntime.android.domain.model.LibraryItem
 @Composable
 fun LibraryScreen(
     onItemClick: (imdbId: String, contentType: LibraryContentType) -> Unit,
-    onTraktSettings: () -> Unit,
-    onSubtitleSettings: () -> Unit = {},
-    onSourceSettings: () -> Unit = {},
-    onRemoteSettings: () -> Unit = {},
-    onAppearanceSettings: () -> Unit = {},
-    onDownloadsSettings: () -> Unit = {},
-    onTorrentSettings: () -> Unit = {},
+    onSettings: () -> Unit,
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -64,26 +52,8 @@ fun LibraryScreen(
                             }
                         }
                     }
-                    IconButton(onClick = onAppearanceSettings) {
-                        Icon(Icons.Default.Palette, "Appearance")
-                    }
-                    IconButton(onClick = onDownloadsSettings) {
-                        Icon(Icons.Default.Download, "Downloads")
-                    }
-                    IconButton(onClick = onTorrentSettings) {
-                        Icon(Icons.Default.Tune, "Torrent Settings")
-                    }
-                    IconButton(onClick = onSourceSettings) {
-                        Icon(Icons.Default.Storage, "Torrent Sources")
-                    }
-                    IconButton(onClick = onSubtitleSettings) {
-                        Icon(Icons.Default.ClosedCaption, "Subtitle Settings")
-                    }
-                    IconButton(onClick = onRemoteSettings) {
-                        Icon(Icons.Default.SettingsRemote, "Remote Control")
-                    }
-                    IconButton(onClick = onTraktSettings) {
-                        Icon(Icons.Default.Settings, "Trakt Settings")
+                    IconButton(onClick = onSettings) {
+                        Icon(Icons.Default.Settings, "Settings")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(

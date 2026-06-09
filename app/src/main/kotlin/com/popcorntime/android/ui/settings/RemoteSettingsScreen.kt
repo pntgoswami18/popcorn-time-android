@@ -1,7 +1,12 @@
 package com.popcorntime.android.ui.settings
 
+import android.app.Activity
+import android.content.ClipboardManager
+import android.view.WindowManager
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.SettingsRemote
@@ -9,13 +14,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager as LocalClipboardManagerCompose
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import android.content.ClipboardManager
-import androidx.compose.ui.platform.LocalContext
+import com.popcorntime.android.ui.components.QrCodeImage
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -25,6 +29,19 @@ fun RemoteSettingsScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+
+    DisposableEffect(state.isEnabled) {
+        val window = (context as? Activity)?.window
+        if (state.isEnabled) {
+            window?.setFlags(
+                WindowManager.LayoutParams.FLAG_SECURE,
+                WindowManager.LayoutParams.FLAG_SECURE,
+            )
+        }
+        onDispose {
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -53,10 +70,10 @@ fun RemoteSettingsScreen(
             modifier = Modifier
                 .padding(padding)
                 .padding(24.dp)
-                .fillMaxSize(),
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            // Enable toggle
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant,
@@ -88,7 +105,39 @@ fun RemoteSettingsScreen(
             }
 
             if (state.isEnabled) {
-                // Port display
+                Text(
+                    "Anyone on your network who can see this screen can control playback.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                            .fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text("IP Address", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            state.ipAddress ?: "Unavailable",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontFamily = FontFamily.Monospace,
+                            ),
+                            color = if (state.ipAddress != null) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
+                    }
+                }
+
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant,
@@ -112,7 +161,33 @@ fun RemoteSettingsScreen(
                     }
                 }
 
-                // Token section
+                if (state.qrPayload.isNotBlank()) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .padding(16.dp)
+                                .fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Text("Scan to connect", style = MaterialTheme.typography.titleSmall)
+                            QrCodeImage(
+                                content = state.qrPayload,
+                                modifier = Modifier.size(200.dp),
+                            )
+                            Text(
+                                "Scan with a remote control client to import connection details.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant,
@@ -155,7 +230,6 @@ fun RemoteSettingsScreen(
                     }
                 }
 
-                // Help text
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.primaryContainer,
@@ -170,8 +244,9 @@ fun RemoteSettingsScreen(
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.primary,
                         )
+                        val endpoint = state.ipAddress?.let { "http://$it:${state.port}" } ?: "http://<your-phone-IP>:${state.port}"
                         Text(
-                            "Connect to http://<your-phone-IP>:${state.port} using the bearer token above as the Authorization header.",
+                            "Connect to $endpoint using the bearer token above as the Authorization header, or scan the QR code.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                         )

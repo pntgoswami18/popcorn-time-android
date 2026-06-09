@@ -35,6 +35,7 @@ import com.popcorntime.android.ui.settings.RemoteSettingsScreen
 import com.popcorntime.android.ui.settings.SourceSettingsScreen
 import com.popcorntime.android.ui.settings.SubtitleSettingsScreen
 import com.popcorntime.android.ui.settings.TorrentSettingsScreen
+import com.popcorntime.android.ui.settings.SettingsScreen
 import com.popcorntime.android.ui.settings.TraktSettingsScreen
 import com.popcorntime.android.ui.shows.ShowBrowserScreen
 import com.popcorntime.android.ui.shows.ShowDetailScreen
@@ -62,13 +63,8 @@ fun MainScreen(isTv: Boolean = false) {
         !route.startsWith("player/") &&
             !route.startsWith("player_local/") &&
             route != "player_local" &&
-            route != "settings/trakt" &&
-            route != "settings/subtitles" &&
-            route != "settings/sources" &&
-            route != "settings/remote" &&
-            route != "settings/appearance" &&
-            route != "settings/torrent" &&
-            route != "settings/downloads"
+            route != "settings" &&
+            !route.startsWith("settings/")
     } != false
 
     if (isTv) {
@@ -222,13 +218,19 @@ private fun MainNavHost(navController: NavHostController, modifier: Modifier = M
                         LibraryContentType.ANIME -> navController.navigate("show_detail/${Uri.encode(imdbId)}/anime")
                     }
                 },
-                onTraktSettings = { navController.navigate("settings/trakt") },
-                onSubtitleSettings = { navController.navigate("settings/subtitles") },
-                onSourceSettings = { navController.navigate("settings/sources") },
-                onRemoteSettings = { navController.navigate("settings/remote") },
+                onSettings = { navController.navigate("settings") },
+            )
+        }
+        composable("settings") {
+            SettingsScreen(
+                onBack = { navController.popBackStack() },
                 onAppearanceSettings = { navController.navigate("settings/appearance") },
-                onDownloadsSettings = { navController.navigate("settings/downloads") },
                 onTorrentSettings = { navController.navigate("settings/torrent") },
+                onSourceSettings = { navController.navigate("settings/sources") },
+                onSubtitleSettings = { navController.navigate("settings/subtitles") },
+                onRemoteSettings = { navController.navigate("settings/remote") },
+                onTraktSettings = { navController.navigate("settings/trakt") },
+                onDownloadsSettings = { navController.navigate("settings/downloads") },
             )
         }
         composable("settings/trakt") {
@@ -250,7 +252,12 @@ private fun MainNavHost(navController: NavHostController, modifier: Modifier = M
             TorrentSettingsScreen(onBack = { navController.popBackStack() })
         }
         composable("settings/downloads") {
-            DownloadsScreen(onBack = { navController.popBackStack() })
+            DownloadsScreen(
+                onBack = { navController.popBackStack() },
+                onPlayDownload = { uri ->
+                    navController.navigate("player_local/${Uri.encode(uri)}")
+                },
+            )
         }
 
         // ── Files tab ─────────────────────────────────────────────────────────

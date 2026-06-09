@@ -54,7 +54,7 @@ class DownloadManager @Inject constructor(
         }
     }
 
-    fun startDownload(imdbId: String, title: String, magnetUrl: String) {
+    fun startDownload(imdbId: String, title: String, magnetUrl: String, quality: String = "") {
         scope.launch {
             if (!inFlightIds.add(imdbId)) return@launch  // already in-flight
             if (downloads.value.any { it.imdbId == imdbId }) {
@@ -71,6 +71,7 @@ class DownloadManager @Inject constructor(
                     imdbId = imdbId,
                     title = title,
                     magnetUrl = magnetUrl,
+                    quality = quality,
                     filePath = saveDir.absolutePath,
                 )
                 downloadDao.insert(entity)
@@ -83,7 +84,7 @@ class DownloadManager @Inject constructor(
                 val torrent = Torrent(
                     url = magnetUrl,
                     magnet = magnetUrl,
-                    quality = "",
+                    quality = quality,
                     type = "download",
                     size = 0L,
                     fileSize = "",
@@ -117,8 +118,21 @@ class DownloadManager @Inject constructor(
                         }
                     }
                 }
-                // Wait for Ready or Error state
-                val finalState = torrentEngine.state.first { it is StreamState.Ready || it is StreamState.Error }
+                // Wait for streaming-ready, error, or cancel (Idle).
+                val readyOrError = torrentEngine.state.first {
+                    it is StreamState.Ready || it is StreamState.Error || it is StreamState.Idle
+                }
+                if (readyOrError is StreamState.Error || readyOrError is StreamState.Idle) {
+                    statsJob.cancel()
+                    _activeDownloadStats.value = null
+                    downloadDao.delete(imdbId)
+                    activeDownloadImdbId.compareAndSet(imdbId, null)
+                    return@launch
+                }
+                val finalState = torrentEngine.state.first { state ->
+                    state is StreamState.Error || state is StreamState.Idle ||
+                        (state is StreamState.Ready && isFullyDownloaded(state))
+                }
                 statsJob.cancel()
                 _activeDownloadStats.value = null
                 if (finalState is StreamState.Error) {
@@ -126,8 +140,11 @@ class DownloadManager @Inject constructor(
                     activeDownloadImdbId.compareAndSet(imdbId, null)
                     return@launch
                 }
-                // Ready path — use markComplete (UPDATE) so a pre-existing row is updated
-                // correctly regardless of the DAO's OnConflictStrategy.
+                if (finalState is StreamState.Idle) {
+                    downloadDao.delete(imdbId)
+                    activeDownloadImdbId.compareAndSet(imdbId, null)
+                    return@launch
+                }
                 if (finalState is StreamState.Ready) {
                     val videoFilePath = torrentEngine.getVideoFilePath() ?: saveDir.absolutePath
                     downloadDao.markComplete(imdbId, videoFilePath, System.currentTimeMillis())
@@ -159,6 +176,13 @@ class DownloadManager @Inject constructor(
             }
             downloadDao.delete(imdbId)
         }
+    }
+
+    private fun isFullyDownloaded(state: StreamState.Ready): Boolean {
+        if (state.progress >= 0.99f) return true
+        val total = torrentEngine.totalBytes.value
+        val downloaded = torrentEngine.downloadedBytes.value
+        return total > 0L && downloaded >= total
     }
 
     fun deleteDownload(imdbId: String) {

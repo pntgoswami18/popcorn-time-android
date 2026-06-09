@@ -8,6 +8,7 @@ data class DownloadEntity(
     @PrimaryKey val imdbId: String,
     val title: String,
     val magnetUrl: String,
+    val quality: String = "",
     val filePath: String? = null,
     val completedAt: Long? = null,
 )

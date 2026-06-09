@@ -123,7 +123,12 @@ class MovieDetailViewModel @Inject constructor(
 
     fun startDownload(torrent: Torrent) {
         val movie = _uiState.value.movie ?: return
-        downloadManager.startDownload(movie.imdbId, movie.title, torrent.magnet.ifBlank { torrent.url })
+        downloadManager.startDownload(
+            movie.imdbId,
+            movie.title,
+            torrent.magnet.ifBlank { torrent.url },
+            torrent.quality,
+        )
     }
 
     private fun qualityRank(quality: String) = when (quality) {

@@ -131,4 +131,7 @@ dependencies {
 
     // Cast
     implementation(libs.play.services.cast.framework)
+
+    // QR codes (remote control pairing)
+    implementation(libs.zxing.core)
 }
