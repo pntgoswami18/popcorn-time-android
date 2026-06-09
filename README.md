@@ -2,7 +2,7 @@
 
 A native Android client for Popcorn Time — stream movies, TV series and anime via BitTorrent, with Trakt.tv sync, subtitles, and a personal library.
 
-> **Status:** Phases 1–5 complete. Active development.
+> **Status:** Phases 1–6 complete. Active development.
 
 ---
 
@@ -27,18 +27,47 @@ A native Android client for Popcorn Time — stream movies, TV series and anime 
 - Auto-mark watched on playback completion
 - Background torrent download with foreground service notification
 - **Cast to TV** — Chromecast (Google Cast SDK), Kodi JSON-RPC, DLNA renderers, or any external video player
+- **Resume playback** — position saved every 10 s, restored on next open (skips resume if under 30 s)
+- **Auto-play next episode** — 10-second countdown overlay; cancel at any time
+- **Picture-in-Picture** — enters PiP automatically on home button; full overlay suppressed in PiP
+- **Media Session** — lock-screen and notification transport controls via Media3
+- **Aspect ratio / zoom** — cycle between Fit, Fill, Zoom, and Fixed-width modes
+- **Brightness control** — in-player slider; restored to system brightness on exit
+- **Audio track picker** — bottom sheet listing all tracks from the media container
+- **Custom subtitle import** — load any local `.srt` file via the file picker
+- **Subtitle styling** — font size, color, background opacity, and edge type
+- **Local file playback** — open `.mp4`, `.mkv`, `.avi`, and other video files directly from device storage
 
 ### Personal Library
 - **Favourites** — heart icon on any movie or show
 - **Watchlist** — playlist icon to queue content for later
 - **Watched history** — auto-populated from player, or mark manually
+- **Bulk mark watched** — mark an entire series as watched in one tap from the show detail screen
+- **Parental controls** — age-rating filter (G / PG / PG-13 / R) applied across movie and show browsers
+- **Hide watched** — option to hide or fade already-watched titles in the browser
 - All three lists persisted locally in Room
 
 ### Trakt.tv Sync
 - Connect via device authorization flow (no browser redirect needed)
 - Push/pull watch history, watchlist and favourites
 - Manual sync via Library → Settings gear
+- **Real-time scrobbling** — playback position pushed to Trakt while watching (start / pause / stop)
 - Token persisted in DataStore; disconnect any time
+
+### Downloads & Torrent
+- **Offline download mode** — save any title to device storage for later playback
+- **Download manager** — track progress, resume, cancel, and delete downloads from Settings
+- **Speed limits** — configurable max download / upload speeds in Torrent Settings
+- **Seeding ratio** — stop seeding automatically when the configured ratio is reached
+- **Cache management** — clear torrent temp files from Settings
+
+### Discovery
+- **Ratings overlay** — IMDb rating badge on every movie and show thumbnail card
+- **Random picker** — shuffle button to open a random title from the current browse list
+
+### UI & Platform
+- **Themes** — System default, Light, and Dark modes
+- **Android TV / Fire TV layout** — permanent navigation drawer and D-pad friendly focus management; LEANBACK_LAUNCHER intent filter
 
 ---
 
@@ -82,13 +111,14 @@ app/
     │   ├── model/        # Pure Kotlin domain models (Movie, Show, LibraryItem, ...)
     │   └── repository/   # Repository interfaces
     └── ui/
+        ├── files/        # Local file picker screen
         ├── library/      # Library tab (Favourites / Watchlist / Watched)
         ├── main/         # MainScreen, bottom navigation, NavHost
         ├── movies/       # Movie browser + detail
-        ├── player/       # ExoPlayer screen
-        ├── settings/     # Trakt settings screen
+        ├── player/       # ExoPlayer screen (resume, PiP, Media Session, subtitles, audio)
+        ├── settings/     # Appearance, Trakt, Torrent, Downloads settings screens
         ├── shows/        # Series/Anime browser + detail
-        └── theme/        # Material 3 theme
+        └── theme/        # Material 3 theme (System / Light / Dark)
 ```
 
 ### Key data flows
@@ -220,7 +250,7 @@ curl -X POST -H "Authorization: Bearer $TOKEN" http://192.168.1.x:8889/pause
 | 3 | ✅ Done | Library tab, Favourites, Watchlist, Watched history, Trakt.tv sync |
 | 4 | ✅ Done | Casting — Chromecast, External Player, Kodi/XBMC, DLNA |
 | 5 | ✅ Done | Additional torrent sources (Jackett/Prowlarr), HTTP remote control API, full OpenSubtitles auth |
-| 6 | Planned | **Player UX:** Resume playback (remember last position), auto-play next episode with countdown, aspect ratio / zoom controls, brightness / contrast / saturation adjustments, multiple audio track picker<br>**Subtitles:** Custom .srt file import from device storage, subtitle styling (font, size, color, position, background)<br>**Content Discovery:** Ratings overlay on thumbnail cards, random / shuffle content picker, hide or fade watched items in browser, TMDb as additional metadata source<br>**Library:** Bulk "mark entire series as watched", parental controls (age-rating filter)<br>**Download & Torrent:** Offline download mode (save to device for later), local file playback (.mp4 / .mkv / .avi), torrent max download / upload speed limits, seeding ratio controls, cache / temp file management in settings<br>**Trakt:** Real-time scrobbling (push playback position to Trakt while watching)<br>**UI & Platform:** Themes, Android TV / Fire TV layout, PiP mode, Media Session (lock-screen controls) |
+| 6 | ✅ Done | **Player UX:** Resume playback, auto-play next episode with countdown, aspect ratio / zoom, brightness control, audio track picker<br>**Subtitles:** Custom .srt import, subtitle styling (font, size, color, background)<br>**Content Discovery:** Ratings overlay on cards, random / shuffle picker, hide/fade watched in browser<br>**Library:** Bulk "mark series as watched", parental controls (age-rating filter)<br>**Download & Torrent:** Offline download mode, local file playback, speed limits, seeding ratio, cache management<br>**Trakt:** Real-time scrobbling (start / pause / stop)<br>**UI & Platform:** Themes (System / Light / Dark), Android TV / Fire TV layout, PiP, Media Session |
 
 ---
 
@@ -228,8 +258,9 @@ curl -X POST -H "Authorization: Bearer $TOKEN" http://192.168.1.x:8889/pause
 
 - **No code signing** — sideloaded APKs may require enabling "Install from unknown sources"
 - **Trakt Client ID** — must be supplied by the developer before Trakt sync works (see setup above)
-- **Room migration** — a proper `Migration(1, 2)` is in place; upgrading from v1 to v2 creates the `library_items` table without data loss
+- **Room migration** — migrations 1→2 and 2→3 are in place; upgrading preserves all library data and adds the `downloads` table
 - **YTS movie detail** — fetched via IMDB ID lookup; availability depends on YTS mirror uptime
+- **Download mode** — a single torrent stream is active at a time; background downloads pause if a stream is started
 
 ---
 
