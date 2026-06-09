@@ -19,6 +19,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -81,6 +83,14 @@ class MovieBrowserViewModel @Inject constructor(
     init {
         loadMovies(reset = true)
         observeWatchedAndBookmarked()
+        // Re-apply filters when filter prefs change
+        viewModelScope.launch {
+            combine(hideWatched, maxRating, watchedIds) { _, _, _ -> Unit }
+                .drop(1)   // skip the initial emission before movies are loaded
+                .collect {
+                    loadMovies(reset = true)
+                }
+        }
     }
 
     fun loadMovies(reset: Boolean = false) {
@@ -108,8 +118,9 @@ class MovieBrowserViewModel @Inject constructor(
             repository.getMovies(filter).fold(
                 onSuccess = { newMovies ->
                     _uiState.update {
+                        val rawMovies = if (reset) newMovies else it.movies + newMovies
                         it.copy(
-                            movies = if (reset) newMovies else it.movies + newMovies,
+                            movies = applyFilters(rawMovies),
                             isLoading = false,
                             isLoadingMore = false,
                             currentPage = page,
@@ -177,8 +188,9 @@ class MovieBrowserViewModel @Inject constructor(
     fun pickRandom(): String? = _uiState.value.movies.randomOrNull()?.imdbId
 
     private fun observeWatchedAndBookmarked() {
+        // Single source of truth: libraryRepository via the top-level watchedIds StateFlow
         viewModelScope.launch {
-            repository.observeWatched().collect { ids ->
+            watchedIds.collect { ids ->
                 _uiState.update { it.copy(watchedIds = ids) }
             }
         }

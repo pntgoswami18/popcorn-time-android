@@ -9,12 +9,10 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
@@ -28,7 +26,6 @@ class DownloadManager @Inject constructor(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    private val _downloads = MutableStateFlow<List<DownloadEntity>>(emptyList())
     val downloads: StateFlow<List<DownloadEntity>> = downloadDao.observeAll()
         .stateIn(scope, SharingStarted.Eagerly, emptyList())
 
@@ -59,11 +56,11 @@ class DownloadManager @Inject constructor(
             )
             torrentEngine.startStream(torrent, saveDir)
             // Wait for Ready state to capture actual file path
-            val readyState = torrentEngine.state.first { it is StreamState.Ready } as? StreamState.Ready
-            if (readyState != null) {
-                // The stream server path gives the video file path via the save dir; update entity
+            val readyState = torrentEngine.state.first { it is StreamState.Ready }
+            if (readyState is StreamState.Ready) {
+                val videoFilePath = torrentEngine.getVideoFilePath() ?: saveDir.absolutePath
                 val updatedEntity = entity.copy(
-                    filePath = saveDir.absolutePath,
+                    filePath = videoFilePath,
                     completedAt = System.currentTimeMillis(),
                 )
                 downloadDao.insert(updatedEntity)
@@ -89,7 +86,6 @@ class DownloadManager @Inject constructor(
                 if (f.isDirectory) f.deleteRecursively() else f.delete()
             }
             downloadDao.delete(imdbId)
-            _downloads.update { it.filter { d -> d.imdbId != imdbId } }
         }
     }
 }

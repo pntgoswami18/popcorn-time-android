@@ -19,9 +19,7 @@ import androidx.lifecycle.viewModelScope
 import com.popcorntime.android.data.db.entity.DownloadEntity
 import com.popcorntime.android.data.torrent.DownloadManager
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -30,7 +28,6 @@ class DownloadsViewModel @Inject constructor(
     private val downloadManager: DownloadManager,
 ) : ViewModel() {
     val downloads: StateFlow<List<DownloadEntity>> = downloadManager.downloads
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     fun deleteDownload(imdbId: String) {
         viewModelScope.launch { downloadManager.deleteDownload(imdbId) }

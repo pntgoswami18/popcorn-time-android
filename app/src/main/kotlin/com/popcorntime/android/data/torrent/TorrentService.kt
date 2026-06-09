@@ -70,8 +70,8 @@ class TorrentService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        torrentEngine.stopCurrent()
         remoteControlServer.stopIfRunning()
+        torrentEngine.release()
         serviceScope.cancel()
         super.onDestroy()
     }

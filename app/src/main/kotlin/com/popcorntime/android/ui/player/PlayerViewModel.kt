@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -200,30 +201,24 @@ class PlayerViewModel @Inject constructor(
         val key = positionKey()   // capture BEFORE any mutation
         resumeJob?.cancel()
         resumeJob = viewModelScope.launch {
-            torrentEngine.state.collect { state ->
-                if (state is StreamState.Ready) {
-                    val savedPos = playbackPositionStore.getPosition(key)
-                    if (savedPos > 30_000L) {
-                        playbackController.command.tryEmit(PlaybackCommand.SeekTo(savedPos))
-                    }
-                    startPositionSaveLoop()
-                    resumeJob = null
-                    return@collect
+            torrentEngine.state.first { it is StreamState.Ready }.let {
+                val savedPos = playbackPositionStore.getPosition(key)
+                if (savedPos > 30_000L) {
+                    playbackController.command.tryEmit(PlaybackCommand.SeekTo(savedPos))
                 }
+                startPositionSaveLoop()
             }
+            resumeJob = null
         }
     }
 
     private fun startPositionSaveLoop() {
+        val key = positionKey()   // capture ONCE at loop start
         positionSaveJob?.cancel()
         positionSaveJob = viewModelScope.launch {
             while (isActive) {
                 delay(10_000)
-                val key = positionKey()
-                val pos = playbackController.playerPositionMs.value
-                if (pos > 0) {
-                    playbackPositionStore.savePosition(key, pos)
-                }
+                playbackPositionStore.savePosition(key, playbackController.playerPositionMs.value)
             }
         }
     }
@@ -352,6 +347,7 @@ class PlayerViewModel @Inject constructor(
         val completedSeason = currentSeason
         val completedEpisode = currentEpisode
         val completedQuality = currentQuality
+        val completedContentType = currentContentType
 
         positionSaveJob?.cancel()
         viewModelScope.launch {
@@ -367,9 +363,9 @@ class PlayerViewModel @Inject constructor(
         }
 
         // Trakt scrobble stop
-        if (currentImdbId.isNotBlank()) {
+        if (completedImdbId.isNotBlank()) {
             viewModelScope.launch {
-                runCatching { traktScrobbleService.scrobbleStop(currentImdbId, currentContentType, 100f) }
+                runCatching { traktScrobbleService.scrobbleStop(completedImdbId, completedContentType, 100f) }
             }
         }
 

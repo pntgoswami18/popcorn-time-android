@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -97,8 +99,9 @@ class ShowBrowserViewModel @Inject constructor(
             repository.getShows(filter).fold(
                 onSuccess = { newShows ->
                     _uiState.update {
+                        val rawShows = if (reset) newShows else it.shows + newShows
                         it.copy(
-                            shows = if (reset) newShows else it.shows + newShows,
+                            shows = applyFilters(rawShows),
                             isLoading = false,
                             isLoadingMore = false,
                             currentPage = page,
@@ -163,8 +166,9 @@ class ShowBrowserViewModel @Inject constructor(
     fun pickRandom(): String? = _uiState.value.shows.randomOrNull()?.imdbId
 
     private fun observeState() {
+        // Single source of truth: libraryRepository via the top-level watchedIds StateFlow
         viewModelScope.launch {
-            repository.observeWatched().collect { ids ->
+            watchedIds.collect { ids ->
                 _uiState.update { it.copy(watchedIds = ids) }
             }
         }
@@ -172,6 +176,14 @@ class ShowBrowserViewModel @Inject constructor(
             libraryRepository.observeFavourites().collect { items ->
                 _uiState.update { it.copy(bookmarkedIds = items.map { item -> item.imdbId }.toSet()) }
             }
+        }
+        // Re-apply filters when filter prefs change
+        viewModelScope.launch {
+            combine(hideWatched, watchedIds) { _, _ -> Unit }
+                .drop(1)   // skip the initial emission before shows are loaded
+                .collect {
+                    loadShows(reset = true)
+                }
         }
     }
 }

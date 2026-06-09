@@ -140,6 +140,12 @@ class TorrentEngine @Inject constructor(
         scope.cancel()
     }
 
+    /** Returns the absolute path of the largest video file in the current torrent, or null. */
+    fun getVideoFilePath(): String? {
+        val handle = currentHandleRef.get() ?: return null
+        return findVideoFile(handle)?.absolutePath
+    }
+
     // ── Internal monitor loop ─────────────────────────────────────────────────
 
     private suspend fun monitorProgress() {
