@@ -84,8 +84,11 @@ class DownloadManager @Inject constructor(
                     activeDownloadImdbId.compareAndSet(imdbId, null)
                 }
             } finally {
-                // Always remove from inFlightIds, even if an uncaught exception escapes above,
-                // so future download attempts for this title are not permanently blocked.
+                // Always clean up, even if an uncaught exception escapes the try body
+                // (e.g. torrentEngine.startStream throws). Without this, activeDownloadImdbId
+                // would stay set permanently, causing cancelDownload for any subsequent
+                // download to fail its CAS and never call stopCurrent().
+                activeDownloadImdbId.compareAndSet(imdbId, null)
                 inFlightIds.remove(imdbId)
             }
         }
