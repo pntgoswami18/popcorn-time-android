@@ -220,7 +220,7 @@ curl -X POST -H "Authorization: Bearer $TOKEN" http://192.168.1.x:8889/pause
 | 3 | ✅ Done | Library tab, Favourites, Watchlist, Watched history, Trakt.tv sync |
 | 4 | ✅ Done | Casting — Chromecast, External Player, Kodi/XBMC, DLNA |
 | 5 | ✅ Done | Additional torrent sources (Jackett/Prowlarr), HTTP remote control API, full OpenSubtitles auth |
-| 6 | Planned | Themes, Android TV / Fire TV layout, PiP mode, Media Session |
+| 6 | Planned | **Player UX:** Resume playback (remember last position), auto-play next episode with countdown, aspect ratio / zoom controls, brightness / contrast / saturation adjustments, multiple audio track picker<br>**Subtitles:** Custom .srt file import from device storage, subtitle styling (font, size, color, position, background)<br>**Content Discovery:** Ratings overlay on thumbnail cards, random / shuffle content picker, hide or fade watched items in browser, TMDb as additional metadata source<br>**Library:** Bulk "mark entire series as watched", parental controls (age-rating filter)<br>**Download & Torrent:** Offline download mode (save to device for later), local file playback (.mp4 / .mkv / .avi), torrent max download / upload speed limits, seeding ratio controls, cache / temp file management in settings<br>**Trakt:** Real-time scrobbling (push playback position to Trakt while watching)<br>**UI & Platform:** Themes, Android TV / Fire TV layout, PiP mode, Media Session (lock-screen controls) |
 
 ---
 
