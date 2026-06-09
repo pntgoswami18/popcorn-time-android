@@ -10,6 +10,30 @@ import timber.log.Timber
 
 class DlnaCaster(private val httpClient: HttpClient) {
 
+    suspend fun stop(renderer: DlnaRenderer? = null): Result<Unit> {
+        if (renderer == null) return Result.success(Unit)
+        return runCatching {
+            val controlUrl = "http://${renderer.host}:${renderer.port}/AVTransport/control"
+            val stopBody = """
+                <?xml version="1.0"?>
+                <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+                    s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+                  <s:Body>
+                    <u:Stop xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+                      <InstanceID>0</InstanceID>
+                    </u:Stop>
+                  </s:Body>
+                </s:Envelope>
+            """.trimIndent()
+            httpClient.post(controlUrl) {
+                contentType(ContentType.Text.Xml)
+                header("SOAPACTION", "\"urn:schemas-upnp-org:service:AVTransport:1#Stop\"")
+                setBody(stopBody)
+            }
+            Timber.d("DLNA stop sent to ${renderer.name}")
+        }
+    }
+
     suspend fun playUrl(renderer: DlnaRenderer, streamUrl: String): Result<Unit> {
         return runCatching {
             val controlUrl = "http://${renderer.host}:${renderer.port}/AVTransport/control"

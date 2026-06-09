@@ -7,6 +7,8 @@ import androidx.lifecycle.viewModelScope
 import com.popcorntime.android.data.remote.RemoteControlServer
 import com.popcorntime.android.data.remote.RemoteControlTokenStore
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,6 +32,8 @@ class RemoteSettingsViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(RemoteSettingsUiState())
     val uiState: StateFlow<RemoteSettingsUiState> = _uiState.asStateFlow()
 
+    private var copyResetJob: Job? = null
+
     init {
         // Observe the stored token
         viewModelScope.launch {
@@ -48,7 +52,14 @@ class RemoteSettingsViewModel @Inject constructor(
     }
 
     fun setEnabled(enabled: Boolean) {
-        if (enabled) server.startIfNotRunning() else server.stopIfRunning()
+        if (enabled) {
+            viewModelScope.launch {
+                val token = tokenStore.getOrCreateToken()
+                server.startIfNotRunning(token)
+            }
+        } else {
+            server.stopIfRunning()
+        }
     }
 
     fun regenerateToken() {
@@ -64,5 +75,10 @@ class RemoteSettingsViewModel @Inject constructor(
         val clip = ClipData.newPlainText("Remote Control Token", token)
         clipboardManager.setPrimaryClip(clip)
         _uiState.update { it.copy(isTokenCopied = true) }
+        copyResetJob?.cancel()
+        copyResetJob = viewModelScope.launch {
+            delay(2_000)
+            _uiState.update { it.copy(isTokenCopied = false) }
+        }
     }
 }

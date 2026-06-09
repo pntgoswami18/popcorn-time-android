@@ -58,10 +58,11 @@ class ShowDetailViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            // Load watchlist and favourite state
+            // Load watchlist, favourite, and watched state
             val inWatchlist = libraryRepository.isInWatchlist(imdbId)
             val isFavourited = libraryRepository.isFavourited(imdbId)
-            _uiState.update { it.copy(isInWatchlist = inWatchlist, isBookmarked = isFavourited) }
+            val isWatched = libraryRepository.isWatched(imdbId)
+            _uiState.update { it.copy(isInWatchlist = inWatchlist, isBookmarked = isFavourited, isWatched = isWatched) }
 
             repository.getShowDetail(imdbId, contentType).fold(
                 onSuccess = { show ->

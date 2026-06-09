@@ -5,10 +5,10 @@ import fi.iki.elonen.NanoHTTPD
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import timber.log.Timber
+import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -25,14 +25,14 @@ class RemoteControlServer @Inject constructor(
         private const val MIME_JSON = "application/json"
     }
 
-    @Volatile private var cachedToken: String? = null
+    private val cachedTokenRef = AtomicReference<String?>(null)
 
     private val _isAlive = MutableStateFlow(false)
     val isAliveFlow: StateFlow<Boolean> = _isAlive.asStateFlow()
 
-    fun startIfNotRunning() {
+    fun startIfNotRunning(token: String) {
         if (!isAlive) {
-            runBlocking { cachedToken = tokenStore.getOrCreateToken() }
+            cachedTokenRef.set(token)
             start(SOCKET_READ_TIMEOUT, false)
             _isAlive.value = isAlive
             Timber.d("RemoteControlServer started on port $REMOTE_PORT")
@@ -47,13 +47,17 @@ class RemoteControlServer @Inject constructor(
         }
     }
 
-    fun invalidateToken() { cachedToken = null }
+    fun invalidateToken() { cachedTokenRef.set(null) }
 
     override fun serve(session: IHTTPSession): Response {
         // Bearer token auth
         val authHeader = session.headers["authorization"] ?: ""
-        val expectedToken = cachedToken
-            ?: runBlocking { tokenStore.getOrCreateToken().also { cachedToken = it } }
+        val expectedToken = cachedTokenRef.get()
+            ?: return newFixedLengthResponse(
+                Response.Status.SERVICE_UNAVAILABLE,
+                MIME_JSON,
+                """{"error":"Server not ready"}""",
+            )
         val bearer = authHeader.removePrefix("Bearer ").trim()
         if (!bearer.constantTimeEquals(expectedToken)) {
             return newFixedLengthResponse(

@@ -85,7 +85,10 @@ class SubtitleService constructor(
     suspend fun searchSubtitles(
         imdbId: String,
         languages: List<String>? = null,
-    ): List<Subtitle> = runCatching {
+    ): List<Subtitle> {
+        // Guard against non-standard/synthetic IMDB IDs (e.g. jackett: prefixed, tvmaze: prefixed)
+        if (!imdbId.startsWith("tt") && !imdbId.all { it.isDigit() }) return emptyList()
+        return runCatching {
         val effectiveLanguages = languages ?: osTokenStore.getPreferredLanguages()
         val baseUrl = resolveBaseUrl()
         val cleanId = imdbId.removePrefix("tt")
@@ -110,9 +113,10 @@ class SubtitleService constructor(
                 }
             }
             .take(10)
-    }.getOrElse { e ->
-        Timber.w(e, "SubtitleService: search failed for $imdbId")
-        emptyList()
+        }.getOrElse { e ->
+            Timber.w(e, "SubtitleService: search failed for $imdbId")
+            emptyList()
+        }
     }
 
     /**

@@ -39,7 +39,7 @@ class TraktTokenStore constructor(
         dataStore.edit { prefs ->
             prefs[accessTokenKey] = accessToken
             prefs[refreshTokenKey] = refreshToken
-            prefs[expiresAtKey] = (createdAt + expiresIn) * 1000L
+            prefs[expiresAtKey] = createdAt * 1000L + expiresIn * 1000L
         }
     }
 

@@ -28,6 +28,13 @@ class CastManager constructor(
     private val _castState = MutableStateFlow<CastState>(CastState.Idle)
     val castState: StateFlow<CastState> = _castState.asStateFlow()
 
+    /** Tracks the last active DLNA renderer for cleanup in disconnect(). */
+    private var activeDlnaRenderer: DlnaRenderer? = null
+
+    /** Tracks the last active Kodi host/port for cleanup in disconnect(). */
+    private var activeKodiHost: String? = null
+    private var activeKodiPort: Int = 8080
+
     /** Replaces 127.0.0.1 with the device's real LAN IP so external receivers can reach NanoHTTPD. */
     @Suppress("DEPRECATION")
     fun toLanUrl(streamUrl: String): String {
@@ -80,6 +87,8 @@ class CastManager constructor(
 
     fun castToKodi(streamUrl: String, host: String, port: Int) {
         val url = toLanUrl(streamUrl)
+        activeKodiHost = host
+        activeKodiPort = port
         scope.launch {
             val result = kodiCaster.openUrl(host, port, url)
             _castState.value = if (result.isSuccess) {
@@ -92,6 +101,7 @@ class CastManager constructor(
 
     fun castToDlna(streamUrl: String, renderer: DlnaRenderer) {
         val url = toLanUrl(streamUrl)
+        activeDlnaRenderer = renderer
         scope.launch {
             val result = dlnaCaster.playUrl(renderer, url)
             _castState.value = if (result.isSuccess) {
@@ -104,6 +114,16 @@ class CastManager constructor(
 
     fun disconnect() {
         chromeCaster.stop()
+        val kodiHost = activeKodiHost
+        if (kodiHost != null) {
+            scope.launch { kodiCaster.stop(kodiHost, activeKodiPort) }
+            activeKodiHost = null
+        }
+        val dlnaRenderer = activeDlnaRenderer
+        if (dlnaRenderer != null) {
+            scope.launch { dlnaCaster.stop(dlnaRenderer) }
+            activeDlnaRenderer = null
+        }
         _castState.value = CastState.Idle
     }
 }

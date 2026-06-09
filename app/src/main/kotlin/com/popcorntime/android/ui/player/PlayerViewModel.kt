@@ -42,6 +42,7 @@ data class PlayerUiState(
     val castState: CastState = CastState.Idle,
     val dlnaRenderers: List<DlnaRenderer> = emptyList(),
     val kodiAddress: Pair<String, Int> = Pair("", 8080),
+    val error: String? = null,
 )
 
 @HiltViewModel
@@ -81,7 +82,7 @@ class PlayerViewModel @Inject constructor(
         } else {
             startStream()
         }
-        loadSubtitles(currentImdbId)
+        if (currentImdbId.isNotBlank()) loadSubtitles(currentImdbId)
         // Load saved Kodi address
         viewModelScope.launch {
             kodiPrefsStore.observeAddress().collect { addr ->
@@ -223,6 +224,10 @@ class PlayerViewModel @Inject constructor(
         // Auto-advance to the next item in the queue, if any
         val next = playbackQueue.dequeue()
         if (next != null) {
+            if (next.magnet.isBlank()) {
+                _uiState.update { it.copy(error = "Queue item has no playable URL") }
+                return
+            }
             currentImdbId = next.imdbId
             currentQuality = next.quality
             currentSeason = next.season

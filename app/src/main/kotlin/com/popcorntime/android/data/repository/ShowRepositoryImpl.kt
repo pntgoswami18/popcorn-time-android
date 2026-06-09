@@ -19,12 +19,12 @@ import com.popcorntime.android.domain.model.Show
 import com.popcorntime.android.domain.model.ShowFilter
 import com.popcorntime.android.domain.model.TorrentSource
 import com.popcorntime.android.domain.repository.ShowRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withTimeout
 import timber.log.Timber
-import java.util.Calendar
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -37,12 +37,18 @@ class ShowRepositoryImpl @Inject constructor(
     private val jackettApi: JackettApiService,
 ) : ShowRepository {
 
-    override suspend fun getShows(filter: ShowFilter): Result<List<Show>> = runCatching {
-        api.listShows(filter).map { it.toSummaryDomain() }
+    override suspend fun getShows(filter: ShowFilter): Result<List<Show>> {
+        return try {
+            Result.success(api.listShows(filter).map { it.toSummaryDomain() })
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
-    override suspend fun getShowDetail(imdbId: String, type: ContentType): Result<Show> =
-        runCatching {
+    override suspend fun getShowDetail(imdbId: String, type: ContentType): Result<Show> {
+        return try {
             val result = api.getShowDetail(imdbId, type)
             if (sourcePrefs.getShowSource() == TorrentSource.JACKETT) {
                 val baseUrl = sourcePrefs.getJackettUrl()
@@ -85,12 +91,17 @@ class ShowRepositoryImpl @Inject constructor(
                                 byQuality[quality] = ep
                             }
                         }
-                        return@runCatching result.toDomain(torrentIndex)
+                        return Result.success(result.toDomain(torrentIndex))
                     }
                 }
             }
-            result.toDomain()
+            Result.success(result.toDomain())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
         }
+    }
 
     override fun observeWatched(): Flow<Set<String>> =
         watchedDao.observeAll().map { it.toSet() }
@@ -243,14 +254,13 @@ private fun String.detectQuality(): String {
     }
 }
 
-/** Parse "YYYY-MM-DD" → Unix timestamp in seconds (0 on failure). */
+/** Parse "YYYY-MM-DD" → Unix timestamp in seconds (0 on failure), always UTC. */
 private fun String.toUnixSeconds(): Long {
     if (isBlank()) return 0L
     return try {
-        val parts = split("-")
-        Calendar.getInstance().apply {
-            set(parts[0].toInt(), parts[1].toInt() - 1, parts[2].toInt(), 0, 0, 0)
-            set(Calendar.MILLISECOND, 0)
-        }.timeInMillis / 1000L
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }
+        sdf.parse(this)?.time?.div(1000) ?: 0L
     } catch (_: Exception) { 0L }
 }

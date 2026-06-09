@@ -15,6 +15,7 @@ import com.popcorntime.android.domain.model.MovieFilter
 import com.popcorntime.android.domain.model.Torrent
 import com.popcorntime.android.domain.model.TorrentSource
 import com.popcorntime.android.domain.repository.MovieRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -29,7 +30,7 @@ class MovieRepositoryImpl @Inject constructor(
     private val jackettApi: JackettApiService,
 ) : MovieRepository {
 
-    override suspend fun getMovies(filter: MovieFilter): Result<List<Movie>> = runCatching {
+    override suspend fun getMovies(filter: MovieFilter): Result<List<Movie>> = safeRunCatching {
         if (sourcePrefs.getMovieSource() == TorrentSource.JACKETT) {
             val baseUrl = sourcePrefs.getJackettUrl()
             val apiKey = sourcePrefs.getJackettApiKey()
@@ -37,7 +38,7 @@ class MovieRepositoryImpl @Inject constructor(
                 val query = filter.queryTerm.ifBlank { filter.genre.takeIf { it != "All" } ?: "popular" }
                 val results = jackettApi.searchMovies(query, apiKey, baseUrl)
                 if (results.isNotEmpty()) {
-                    return@runCatching results.mapIndexed { _, dto ->
+                    return@safeRunCatching results.mapIndexed { _, dto ->
                         val torrent = dto.toMovieTorrent()
                         Movie(
                             id = dto.infoHash.ifBlank { dto.title }.hashCode().and(0x7FFFFFFF),
@@ -65,12 +66,14 @@ class MovieRepositoryImpl @Inject constructor(
         response.data.movies.orEmpty().map { it.toDomain() }
     }
 
-    override suspend fun getMovieDetail(imdbId: String): Result<Movie> = runCatching {
+    override suspend fun getMovieDetail(imdbId: String): Result<Movie> {
         if (imdbId.startsWith("jackett:")) {
-            // Jackett-sourced movies don't have a YTS counterpart — return an error
-            error("No detail available for Jackett-sourced movie (id=$imdbId)")
+            // Jackett-sourced movies don't have a YTS counterpart
+            return Result.failure(UnsupportedOperationException("Jackett movie detail not available"))
         }
-        api.getMovieByImdbId(imdbId).toDomain()
+        return safeRunCatching {
+            api.getMovieByImdbId(imdbId).toDomain()
+        }
     }
 
     override fun observeWatched(): Flow<Set<String>> =
@@ -92,6 +95,17 @@ class MovieRepositoryImpl @Inject constructor(
     override suspend fun isWatched(imdbId: String) = watchedDao.isWatched(imdbId)
     override suspend fun isBookmarked(imdbId: String) = bookmarkedDao.isBookmarked(imdbId)
 }
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Like [runCatching] but re-throws [CancellationException] so coroutine cancellation
+ * is not swallowed.
+ */
+private inline fun <T> safeRunCatching(block: () -> T): Result<T> =
+    runCatching(block).also { result ->
+        result.exceptionOrNull()?.let { if (it is CancellationException) throw it }
+    }
 
 // ── Mappers ──────────────────────────────────────────────────────────────────
 

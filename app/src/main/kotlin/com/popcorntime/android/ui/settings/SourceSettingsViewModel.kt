@@ -8,8 +8,9 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -28,6 +29,8 @@ class SourceSettingsViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(SourceSettingsUiState())
     val uiState: StateFlow<SourceSettingsUiState> = _uiState.asStateFlow()
+
+    private var savedResetJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -64,10 +67,11 @@ class SourceSettingsViewModel @Inject constructor(
         viewModelScope.launch {
             sourcePrefs.saveJackettConfig(url, apiKey)
             _uiState.update { it.copy(jackettUrl = url, jackettApiKey = apiKey, isSaved = true) }
-            viewModelScope.launch {
-                delay(2_000)
-                _uiState.update { it.copy(isSaved = false) }
-            }
+        }
+        savedResetJob?.cancel()
+        savedResetJob = viewModelScope.launch {
+            delay(2_000)
+            _uiState.update { it.copy(isSaved = false) }
         }
     }
 }

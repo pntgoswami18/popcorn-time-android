@@ -4,14 +4,12 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
-import com.popcorntime.android.data.api.JackettApiService
 import com.popcorntime.android.data.sources.TorrentSourcePrefs
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import io.ktor.client.HttpClient
 import javax.inject.Named
 import javax.inject.Singleton
 
@@ -32,9 +30,4 @@ object SourceModule {
     fun provideTorrentSourcePrefs(
         @Named("sourceDataStore") ds: DataStore<Preferences>,
     ): TorrentSourcePrefs = TorrentSourcePrefs(ds)
-
-    @Provides
-    @Singleton
-    fun provideJackettApiService(client: HttpClient): JackettApiService =
-        JackettApiService(client)
 }

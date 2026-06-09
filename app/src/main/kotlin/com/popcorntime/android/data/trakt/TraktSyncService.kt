@@ -8,6 +8,7 @@ import com.popcorntime.android.data.api.dto.TraktSyncAddRequest
 import com.popcorntime.android.data.api.dto.TraktSyncMovie
 import com.popcorntime.android.data.api.dto.TraktSyncShow
 import com.popcorntime.android.data.api.dto.TraktWatchlistEntry
+import com.popcorntime.android.domain.model.LibraryContentType
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.bearerAuth
@@ -41,14 +42,19 @@ class TraktSyncService constructor(
         return (movies + shows).distinct()
     }
 
-    suspend fun pushWatched(imdbId: String, watchedAt: Long) {
+    suspend fun pushWatched(imdbId: String, watchedAt: Long, contentType: LibraryContentType = LibraryContentType.MOVIE) {
         val tk = token() ?: return
         val iso = DateTimeFormatter.ISO_INSTANT.format(Instant.ofEpochMilli(watchedAt))
         runCatching {
             client.post("sync/history") {
                 bearerAuth(tk)
                 contentType(ContentType.Application.Json)
-                setBody(TraktSyncAddRequest(movies = listOf(TraktSyncMovie(watchedAt = iso, ids = TraktIds(imdb = imdbId)))))
+                val body = if (contentType == LibraryContentType.MOVIE) {
+                    TraktSyncAddRequest(movies = listOf(TraktSyncMovie(watchedAt = iso, ids = TraktIds(imdb = imdbId))))
+                } else {
+                    TraktSyncAddRequest(shows = listOf(TraktSyncShow(ids = TraktIds(imdb = imdbId))))
+                }
+                setBody(body)
             }
         }
     }
@@ -70,24 +76,34 @@ class TraktSyncService constructor(
         }.getOrDefault(emptyList())
     }
 
-    suspend fun pushToWatchlist(imdbId: String) {
+    suspend fun pushToWatchlist(imdbId: String, contentType: LibraryContentType = LibraryContentType.MOVIE) {
         val tk = token() ?: return
         runCatching {
             client.post("sync/watchlist") {
                 bearerAuth(tk)
                 contentType(ContentType.Application.Json)
-                setBody(TraktSyncAddRequest(movies = listOf(TraktSyncMovie(ids = TraktIds(imdb = imdbId)))))
+                val body = if (contentType == LibraryContentType.MOVIE) {
+                    TraktSyncAddRequest(movies = listOf(TraktSyncMovie(ids = TraktIds(imdb = imdbId))))
+                } else {
+                    TraktSyncAddRequest(shows = listOf(TraktSyncShow(ids = TraktIds(imdb = imdbId))))
+                }
+                setBody(body)
             }
         }
     }
 
-    suspend fun removeFromWatchlist(imdbId: String) {
+    suspend fun removeFromWatchlist(imdbId: String, contentType: LibraryContentType = LibraryContentType.MOVIE) {
         val tk = token() ?: return
         runCatching {
             client.post("sync/watchlist/remove") {
                 bearerAuth(tk)
                 contentType(ContentType.Application.Json)
-                setBody(TraktSyncAddRequest(movies = listOf(TraktSyncMovie(ids = TraktIds(imdb = imdbId)))))
+                val body = if (contentType == LibraryContentType.MOVIE) {
+                    TraktSyncAddRequest(movies = listOf(TraktSyncMovie(ids = TraktIds(imdb = imdbId))))
+                } else {
+                    TraktSyncAddRequest(shows = listOf(TraktSyncShow(ids = TraktIds(imdb = imdbId))))
+                }
+                setBody(body)
             }
         }
     }
@@ -125,26 +141,36 @@ class TraktSyncService constructor(
         }.getOrDefault(emptyList())
     }
 
-    suspend fun pushFavourite(imdbId: String) {
+    suspend fun pushFavourite(imdbId: String, contentType: LibraryContentType = LibraryContentType.MOVIE) {
         val tk = token() ?: return
         val slug = ensureFavouritesSlug() ?: return
         runCatching {
             client.post("users/me/lists/$slug/items") {
                 bearerAuth(tk)
                 contentType(ContentType.Application.Json)
-                setBody(TraktSyncAddRequest(movies = listOf(TraktSyncMovie(ids = TraktIds(imdb = imdbId)))))
+                val body = if (contentType == LibraryContentType.MOVIE) {
+                    TraktSyncAddRequest(movies = listOf(TraktSyncMovie(ids = TraktIds(imdb = imdbId))))
+                } else {
+                    TraktSyncAddRequest(shows = listOf(TraktSyncShow(ids = TraktIds(imdb = imdbId))))
+                }
+                setBody(body)
             }
         }
     }
 
-    suspend fun removeFavourite(imdbId: String) {
+    suspend fun removeFavourite(imdbId: String, contentType: LibraryContentType = LibraryContentType.MOVIE) {
         val tk = token() ?: return
         val slug = ensureFavouritesSlug() ?: return
         runCatching {
             client.post("users/me/lists/$slug/items/remove") {
                 bearerAuth(tk)
                 contentType(ContentType.Application.Json)
-                setBody(TraktSyncAddRequest(movies = listOf(TraktSyncMovie(ids = TraktIds(imdb = imdbId)))))
+                val body = if (contentType == LibraryContentType.MOVIE) {
+                    TraktSyncAddRequest(movies = listOf(TraktSyncMovie(ids = TraktIds(imdb = imdbId))))
+                } else {
+                    TraktSyncAddRequest(shows = listOf(TraktSyncShow(ids = TraktIds(imdb = imdbId))))
+                }
+                setBody(body)
             }
         }
     }

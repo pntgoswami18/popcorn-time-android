@@ -105,6 +105,8 @@ class LibraryRepositoryImpl @Inject constructor(
         remoteWatched.forEach { imdbId ->
             if (!watchedDao.isWatched(imdbId)) {
                 watchedDao.insert(WatchedEntity(imdbId, System.currentTimeMillis()))
+                // Upsert a minimal LibraryItemEntity so the Library UI can display this item
+                libraryItemDao.upsert(LibraryItemEntity(imdbId = imdbId, title = "", posterUrl = "", year = "", contentType = "movie"))
             }
         }
         // Pull watchlist
@@ -112,6 +114,7 @@ class LibraryRepositoryImpl @Inject constructor(
         remoteWatchlist.forEach { imdbId ->
             if (!watchlistDao.isInWatchlist(imdbId)) {
                 watchlistDao.insert(WatchlistEntity(imdbId))
+                libraryItemDao.upsert(LibraryItemEntity(imdbId = imdbId, title = "", posterUrl = "", year = "", contentType = "movie"))
             }
         }
         // Pull favourites
@@ -119,6 +122,7 @@ class LibraryRepositoryImpl @Inject constructor(
         remoteFavourites.forEach { imdbId ->
             if (!bookmarkedDao.isBookmarked(imdbId)) {
                 bookmarkedDao.insert(BookmarkedEntity(imdbId))
+                libraryItemDao.upsert(LibraryItemEntity(imdbId = imdbId, title = "", posterUrl = "", year = "", contentType = "movie"))
             }
         }
     }

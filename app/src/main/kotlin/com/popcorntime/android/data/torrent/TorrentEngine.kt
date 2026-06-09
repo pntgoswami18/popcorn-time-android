@@ -224,7 +224,7 @@ class TorrentEngine @Inject constructor(
                 is MetadataReceivedAlert -> {
                     val h = alert.handle()
                     if (safeIsValid(h)) {
-                        currentHandleRef.set(h)
+                        currentHandleRef.compareAndSet(null, h)
                         runCatching { val inf = h.torrentFile(); if (inf != null) h.setSequentialRange(0, inf.numPieces() - 1) }
                         Timber.d("TorrentEngine: metadata received — ${runCatching { h.name }.getOrDefault("?")}")
                     }

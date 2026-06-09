@@ -8,7 +8,12 @@ import android.content.Intent
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.popcorntime.android.data.remote.RemoteControlServer
+import com.popcorntime.android.data.remote.RemoteControlTokenStore
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
@@ -20,6 +25,9 @@ class TorrentService : Service() {
 
     @Inject lateinit var torrentEngine: TorrentEngine
     @Inject lateinit var remoteControlServer: RemoteControlServer
+    @Inject lateinit var tokenStore: RemoteControlTokenStore
+
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     companion object {
         const val CHANNEL_ID = "torrent_stream"
@@ -41,7 +49,10 @@ class TorrentService : Service() {
             return START_NOT_STICKY
         }
         startForeground(NOTIFICATION_ID, buildNotification("Streaming…"))
-        remoteControlServer.startIfNotRunning()
+        serviceScope.launch {
+            val token = tokenStore.getOrCreateToken()
+            remoteControlServer.startIfNotRunning(token)
+        }
         return START_STICKY
     }
 

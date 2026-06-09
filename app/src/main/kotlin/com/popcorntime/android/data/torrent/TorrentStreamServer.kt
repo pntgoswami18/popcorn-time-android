@@ -4,6 +4,8 @@ import fi.iki.elonen.NanoHTTPD
 import timber.log.Timber
 import java.io.File
 import java.io.FileInputStream
+import java.io.InputStream
+import java.io.RandomAccessFile
 
 /**
  * Local HTTP server that serves a (potentially still-downloading) torrent file
@@ -68,13 +70,12 @@ class TorrentStreamServer : NanoHTTPD(STREAM_PORT) {
             val clampedEnd = end.coerceAtMost(fileLength - 1)
             val length = clampedEnd - start + 1
             val fis = try {
-                FileInputStream(file).apply {
-                    var remaining = start
-                    while (remaining > 0) {
-                        val skipped = skip(remaining)
-                        if (skipped <= 0) break
-                        remaining -= skipped
-                    }
+                val raf = RandomAccessFile(file, "r")
+                raf.seek(start)
+                object : InputStream() {
+                    override fun read(): Int = raf.read()
+                    override fun read(b: ByteArray, off: Int, len: Int) = raf.read(b, off, len)
+                    override fun close() { raf.close() }
                 }
             } catch (e: Exception) {
                 Timber.e(e, "TorrentStreamServer: failed to open file for range request")

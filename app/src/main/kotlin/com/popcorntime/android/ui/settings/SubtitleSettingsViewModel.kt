@@ -35,11 +35,7 @@ class SubtitleSettingsViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            osTokenStore.isLoggedIn().collect { loggedIn ->
-                _uiState.update { it.copy(isLoggedIn = loggedIn) }
-            }
-        }
-        viewModelScope.launch {
+            // One-shot reads first to populate state before the Flow starts emitting
             val languages = osTokenStore.getPreferredLanguages()
             val username = osTokenStore.getUsername() ?: ""
             val allowedDownloads = osTokenStore.getAllowedDownloads()
@@ -51,6 +47,10 @@ class SubtitleSettingsViewModel @Inject constructor(
                     allowedDownloads = allowedDownloads,
                     customApiKey = customApiKey,
                 )
+            }
+            // Then collect the Flow — keeps this coroutine alive
+            osTokenStore.isLoggedIn().collect { loggedIn ->
+                _uiState.update { it.copy(isLoggedIn = loggedIn) }
             }
         }
     }
