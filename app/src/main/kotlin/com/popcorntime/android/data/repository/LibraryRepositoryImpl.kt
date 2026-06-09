@@ -45,10 +45,10 @@ class LibraryRepositoryImpl @Inject constructor(
         libraryItemDao.upsert(metadata.toEntity())
         if (bookmarkedDao.isBookmarked(imdbId)) {
             bookmarkedDao.delete(imdbId)
-            traktSyncService.removeFavourite(imdbId)
+            traktSyncService.removeFavourite(imdbId, metadata.contentType)
         } else {
             bookmarkedDao.insert(BookmarkedEntity(imdbId))
-            traktSyncService.pushFavourite(imdbId)
+            traktSyncService.pushFavourite(imdbId, metadata.contentType)
         }
     }
 
@@ -67,12 +67,20 @@ class LibraryRepositoryImpl @Inject constructor(
     override suspend fun addToWatchlist(imdbId: String, metadata: LibraryItem) {
         libraryItemDao.upsert(metadata.toEntity())
         watchlistDao.insert(WatchlistEntity(imdbId))
-        traktSyncService.pushToWatchlist(imdbId)
+        traktSyncService.pushToWatchlist(imdbId, metadata.contentType)
     }
 
     override suspend fun removeFromWatchlist(imdbId: String) {
         watchlistDao.delete(imdbId)
-        traktSyncService.removeFromWatchlist(imdbId)
+        val entity = libraryItemDao.getById(imdbId)
+        val contentType = entity?.let {
+            when (it.contentType) {
+                "movie" -> LibraryContentType.MOVIE
+                "anime" -> LibraryContentType.ANIME
+                else -> LibraryContentType.SHOW
+            }
+        } ?: LibraryContentType.MOVIE
+        traktSyncService.removeFromWatchlist(imdbId, contentType)
     }
 
     // ── Watched ───────────────────────────────────────────────────────────────
@@ -89,7 +97,7 @@ class LibraryRepositoryImpl @Inject constructor(
     override suspend fun markWatched(imdbId: String, metadata: LibraryItem) {
         libraryItemDao.upsert(metadata.toEntity())
         watchedDao.insert(WatchedEntity(imdbId))
-        traktSyncService.pushWatched(imdbId, System.currentTimeMillis())
+        traktSyncService.pushWatched(imdbId, System.currentTimeMillis(), metadata.contentType)
     }
 
     override suspend fun unmarkWatched(imdbId: String) {

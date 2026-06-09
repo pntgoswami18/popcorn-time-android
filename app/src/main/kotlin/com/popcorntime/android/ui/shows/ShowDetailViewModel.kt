@@ -89,7 +89,12 @@ class ShowDetailViewModel @Inject constructor(
 
     fun toggleWatched() {
         viewModelScope.launch {
-            repository.toggleWatched(imdbId)
+            val show = _uiState.value.show ?: return@launch
+            if (_uiState.value.isWatched) {
+                libraryRepository.unmarkWatched(imdbId)
+            } else {
+                libraryRepository.markWatched(imdbId, show.toLibraryItem())
+            }
             _uiState.update { it.copy(isWatched = !it.isWatched) }
         }
     }

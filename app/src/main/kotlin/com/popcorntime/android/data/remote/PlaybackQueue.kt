@@ -3,28 +3,44 @@ package com.popcorntime.android.data.remote
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class PlaybackQueue @Inject constructor() {
+    private val _itemsRef = AtomicReference<List<QueueItem>>(emptyList())
     private val _items = MutableStateFlow<List<QueueItem>>(emptyList())
     val items: StateFlow<List<QueueItem>> = _items.asStateFlow()
 
     fun enqueue(item: QueueItem) {
-        _items.update { it + item }
+        while (true) {
+            val current = _itemsRef.get()
+            val updated = current + item
+            if (_itemsRef.compareAndSet(current, updated)) {
+                _items.value = updated
+                break
+            }
+        }
     }
 
     fun dequeue(): QueueItem? {
-        var removed: QueueItem? = null
-        _items.update { list ->
-            removed = list.firstOrNull()
-            if (list.isEmpty()) list else list.drop(1)
+        while (true) {
+            val current = _itemsRef.get()
+            if (current.isEmpty()) return null
+            val item = current.first()
+            val updated = current.drop(1)
+            if (_itemsRef.compareAndSet(current, updated)) {
+                _items.value = updated
+                return item
+            }
         }
-        return removed
     }
 
-    fun clear() { _items.update { emptyList() } }
-    fun peek(): QueueItem? = _items.value.firstOrNull()
+    fun clear() {
+        _itemsRef.set(emptyList())
+        _items.value = emptyList()
+    }
+
+    fun peek(): QueueItem? = _itemsRef.get().firstOrNull()
 }

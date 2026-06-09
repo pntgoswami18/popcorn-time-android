@@ -65,7 +65,7 @@ class RemoteSettingsViewModel @Inject constructor(
     fun regenerateToken() {
         viewModelScope.launch {
             val newToken = tokenStore.regenerateToken()
-            server.invalidateToken()
+            server.updateToken(newToken)
             _uiState.update { it.copy(token = newToken, isTokenCopied = false) }
         }
     }

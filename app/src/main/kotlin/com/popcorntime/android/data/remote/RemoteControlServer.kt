@@ -49,6 +49,10 @@ class RemoteControlServer @Inject constructor(
 
     fun invalidateToken() { cachedTokenRef.set(null) }
 
+    fun updateToken(token: String) {
+        cachedTokenRef.set(token)
+    }
+
     override fun serve(session: IHTTPSession): Response {
         // Bearer token auth
         val authHeader = session.headers["authorization"] ?: ""

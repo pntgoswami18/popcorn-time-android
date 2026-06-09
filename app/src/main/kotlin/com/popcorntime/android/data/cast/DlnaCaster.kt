@@ -37,6 +37,11 @@ class DlnaCaster(private val httpClient: HttpClient) {
     suspend fun playUrl(renderer: DlnaRenderer, streamUrl: String): Result<Unit> {
         return runCatching {
             val controlUrl = "http://${renderer.host}:${renderer.port}/AVTransport/control"
+            val escapedUrl = streamUrl
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
 
             // 1. SetAVTransportURI
             val setUriBody = """
@@ -46,7 +51,7 @@ class DlnaCaster(private val httpClient: HttpClient) {
                   <s:Body>
                     <u:SetAVTransportURI xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
                       <InstanceID>0</InstanceID>
-                      <CurrentURI>$streamUrl</CurrentURI>
+                      <CurrentURI>$escapedUrl</CurrentURI>
                       <CurrentURIMetaData></CurrentURIMetaData>
                     </u:SetAVTransportURI>
                   </s:Body>

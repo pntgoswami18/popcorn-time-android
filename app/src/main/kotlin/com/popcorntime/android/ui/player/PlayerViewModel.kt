@@ -217,9 +217,14 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun onPlaybackCompleted() {
+        val completedImdbId = currentImdbId   // capture BEFORE any mutation
+        val completedSeason = currentSeason
+        val completedEpisode = currentEpisode
+        val completedQuality = currentQuality
+
         viewModelScope.launch {
-            val metadata = buildLibraryMetadata()
-            if (metadata != null) libraryRepository.markWatched(currentImdbId, metadata)
+            val metadata = buildLibraryMetadata(completedImdbId, completedSeason, completedEpisode, completedQuality)
+            if (metadata != null) libraryRepository.markWatched(completedImdbId, metadata)
         }
         // Auto-advance to the next item in the queue, if any
         val next = playbackQueue.dequeue()
@@ -254,11 +259,16 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    private fun buildLibraryMetadata(): LibraryItem? {
-        val movie = MovieCache.get(currentImdbId)
+    private fun buildLibraryMetadata(
+        imdbId: String = currentImdbId,
+        @Suppress("UNUSED_PARAMETER") season: Int? = currentSeason,
+        @Suppress("UNUSED_PARAMETER") episode: Int? = currentEpisode,
+        @Suppress("UNUSED_PARAMETER") quality: String = currentQuality,
+    ): LibraryItem? {
+        val movie = MovieCache.get(imdbId)
         if (movie != null) {
             return LibraryItem(
-                imdbId = currentImdbId,
+                imdbId = imdbId,
                 title = movie.title,
                 posterUrl = movie.posterUrl,
                 year = movie.year.toString(),
@@ -266,10 +276,10 @@ class PlayerViewModel @Inject constructor(
                 addedAt = System.currentTimeMillis(),
             )
         }
-        val show = ShowCache.get(currentImdbId)
+        val show = ShowCache.get(imdbId)
         if (show != null) {
             return LibraryItem(
-                imdbId = currentImdbId,
+                imdbId = imdbId,
                 title = show.title,
                 posterUrl = show.posterUrl,
                 year = show.year,

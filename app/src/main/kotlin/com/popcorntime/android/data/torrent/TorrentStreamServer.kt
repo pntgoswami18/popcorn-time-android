@@ -69,25 +69,29 @@ class TorrentStreamServer : NanoHTTPD(STREAM_PORT) {
             }
             val clampedEnd = end.coerceAtMost(fileLength - 1)
             val length = clampedEnd - start + 1
-            val fis = try {
-                val raf = RandomAccessFile(file, "r")
-                raf.seek(start)
-                object : InputStream() {
-                    override fun read(): Int = raf.read()
-                    override fun read(b: ByteArray, off: Int, len: Int) = raf.read(b, off, len)
-                    override fun close() { raf.close() }
-                }
+            val raf = try {
+                RandomAccessFile(file, "r").also { it.seek(start) }
             } catch (e: Exception) {
                 Timber.e(e, "TorrentStreamServer: failed to open file for range request")
                 return newFixedLengthResponse(
                     Response.Status.INTERNAL_ERROR, "text/plain", "Internal Server Error"
                 )
             }
-            return newFixedLengthResponse(
-                Response.Status.PARTIAL_CONTENT, mimeType, fis, length
-            ).apply {
-                addHeader("Content-Range", "bytes $start-$clampedEnd/$fileLength")
-                addHeader("Accept-Ranges", "bytes")
+            val fis = object : InputStream() {
+                override fun read(): Int = raf.read()
+                override fun read(b: ByteArray, off: Int, len: Int): Int = raf.read(b, off, len)
+                override fun close() { raf.close() }
+            }
+            return try {
+                newFixedLengthResponse(
+                    Response.Status.PARTIAL_CONTENT, mimeType, fis, length
+                ).apply {
+                    addHeader("Content-Range", "bytes $start-$clampedEnd/$fileLength")
+                    addHeader("Accept-Ranges", "bytes")
+                }
+            } catch (e: Exception) {
+                raf.close()
+                throw e
             }
         }
 

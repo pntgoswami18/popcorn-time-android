@@ -67,11 +67,11 @@ class SourceSettingsViewModel @Inject constructor(
         viewModelScope.launch {
             sourcePrefs.saveJackettConfig(url, apiKey)
             _uiState.update { it.copy(jackettUrl = url, jackettApiKey = apiKey, isSaved = true) }
-        }
-        savedResetJob?.cancel()
-        savedResetJob = viewModelScope.launch {
-            delay(2_000)
-            _uiState.update { it.copy(isSaved = false) }
+            savedResetJob?.cancel()
+            savedResetJob = viewModelScope.launch {
+                delay(2_000)
+                _uiState.update { it.copy(isSaved = false) }
+            }
         }
     }
 }

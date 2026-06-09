@@ -32,7 +32,7 @@ class TraktAuthService constructor(
     }
 
     fun pollForToken(deviceCode: String, interval: Int, expiresIn: Int): Flow<TraktAuthState> = flow {
-        val pollInterval = interval.coerceAtLeast(5).toLong() * 1000L
+        var pollInterval = interval.coerceAtLeast(5).toLong() * 1000L
         val deadline = System.currentTimeMillis() + expiresIn * 1000L
         emit(TraktAuthState.Pending)
         while (System.currentTimeMillis() < deadline) {
@@ -49,6 +49,10 @@ class TraktAuthService constructor(
                     }
                     HttpStatusCode.BadRequest -> { /* code not yet authorized, keep polling */ }
                     HttpStatusCode.Gone -> { emit(TraktAuthState.Expired); return@flow }
+                    HttpStatusCode.TooManyRequests -> {
+                        // Back off: double the poll interval (cap at 60s)
+                        pollInterval = minOf(pollInterval * 2, 60_000L)
+                    }
                     else -> { emit(TraktAuthState.Error("HTTP ${response.status.value}")); return@flow }
                 }
             } catch (e: Exception) {

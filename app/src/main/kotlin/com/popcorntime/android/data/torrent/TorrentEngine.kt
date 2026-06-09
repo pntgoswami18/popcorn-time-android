@@ -135,7 +135,10 @@ class TorrentEngine @Inject constructor(
                 continue
             }
 
-            currentHandleRef.set(handle)
+            // Only refresh if we haven't been stopped
+            if (currentHandleRef.get() != null) {
+                currentHandleRef.set(handle)
+            }
 
             // Wrap every handle call: a race between stopCurrent() and this loop
             // can still produce an INVALID_TORRENT_HANDLE even after isValid() == true.
