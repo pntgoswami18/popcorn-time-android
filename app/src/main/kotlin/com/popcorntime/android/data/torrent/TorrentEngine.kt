@@ -17,6 +17,7 @@ import org.libtorrent4j.AlertListener
 import org.libtorrent4j.Priority
 import org.libtorrent4j.SessionManager
 import org.libtorrent4j.TorrentHandle
+import org.libtorrent4j.swig.settings_pack
 import org.libtorrent4j.alerts.Alert
 import org.libtorrent4j.alerts.AlertType
 import org.libtorrent4j.alerts.MetadataReceivedAlert
@@ -113,6 +114,21 @@ class TorrentEngine @Inject constructor(
         handle?.let { runCatching { session.remove(it) } }
         streamServer.stop()
         _state.value = StreamState.Idle
+    }
+
+    fun applySpeedLimits(downloadKbps: Int, uploadKbps: Int) {
+        runCatching {
+            val sp = session.settings()
+            sp.setInteger(
+                settings_pack.int_types.download_rate_limit.swigValue(),
+                if (downloadKbps > 0) downloadKbps * 1024 else 0,
+            )
+            sp.setInteger(
+                settings_pack.int_types.upload_rate_limit.swigValue(),
+                if (uploadKbps > 0) uploadKbps * 1024 else 0,
+            )
+            session.applySettings(sp)
+        }
     }
 
     fun release() {

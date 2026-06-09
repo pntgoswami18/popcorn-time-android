@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Slideshow
 import androidx.compose.material.icons.filled.Star
@@ -23,13 +24,17 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.popcorntime.android.domain.model.ContentType
 import com.popcorntime.android.domain.model.LibraryContentType
+import com.popcorntime.android.ui.files.LocalFilesScreen
 import com.popcorntime.android.ui.library.LibraryScreen
 import com.popcorntime.android.ui.movies.MovieBrowserScreen
 import com.popcorntime.android.ui.movies.MovieDetailScreen
 import com.popcorntime.android.ui.player.PlayerScreen
+import com.popcorntime.android.ui.settings.AppearanceSettingsScreen
+import com.popcorntime.android.ui.settings.DownloadsScreen
 import com.popcorntime.android.ui.settings.RemoteSettingsScreen
 import com.popcorntime.android.ui.settings.SourceSettingsScreen
 import com.popcorntime.android.ui.settings.SubtitleSettingsScreen
+import com.popcorntime.android.ui.settings.TorrentSettingsScreen
 import com.popcorntime.android.ui.settings.TraktSettingsScreen
 import com.popcorntime.android.ui.shows.ShowBrowserScreen
 import com.popcorntime.android.ui.shows.ShowDetailScreen
@@ -39,70 +44,109 @@ sealed class Tab(val route: String, val label: String, val icon: ImageVector) {
     data object Series : Tab("tab_series", "Series", Icons.Default.Slideshow)
     data object Anime : Tab("tab_anime", "Anime", Icons.Default.Star)
     data object Library : Tab("tab_library", "Library", Icons.Default.VideoLibrary)
+    data object Files : Tab("tab_files", "Files", Icons.Default.Folder)
 
     companion object {
-        val all = listOf(Movies, Series, Anime, Library)
+        val all = listOf(Movies, Series, Anime, Library, Files)
     }
 }
 
 @Composable
-fun MainScreen() {
+fun MainScreen(isTv: Boolean = false) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDest = navBackStackEntry?.destination
 
     // Hide bottom bar when inside the player or settings screens
     val showBottomBar = currentDest?.route?.let { route ->
-        !route.startsWith("player/") && route != "settings/trakt" && route != "settings/subtitles" && route != "settings/sources" && route != "settings/remote"
+        !route.startsWith("player/") &&
+            route != "settings/trakt" &&
+            route != "settings/subtitles" &&
+            route != "settings/sources" &&
+            route != "settings/remote" &&
+            route != "settings/appearance" &&
+            route != "settings/torrent" &&
+            route != "settings/downloads"
     } != false
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        bottomBar = {
-            if (showBottomBar) {
-                // Determine active tab — detail screens are "children" of their parent tab
-                // even though they live as top-level routes in the flat nav graph.
-                val activeTab: Tab? = when {
-                    currentDest?.route?.startsWith("movie_detail") == true -> Tab.Movies
-                    currentDest?.route?.startsWith("show_detail") == true -> {
-                        val contentType = navBackStackEntry?.arguments?.getString("contentType") ?: "show"
-                        if (contentType == "anime") Tab.Anime else Tab.Series
-                    }
-                    else -> Tab.all.firstOrNull { t ->
-                        currentDest?.hierarchy?.any { it.route == t.route } == true
-                    }
-                }
-
-                NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                    Tab.all.forEach { tab ->
-                        NavigationBarItem(
-                            icon = { Icon(tab.icon, contentDescription = tab.label) },
-                            label = { Text(tab.label) },
-                            selected = activeTab == tab,
-                            onClick = {
-                                navController.navigate(tab.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
+    if (isTv) {
+        // TV: PermanentNavigationDrawer side nav
+        var selectedTab by remember { mutableStateOf<Tab>(Tab.Movies) }
+        PermanentNavigationDrawer(
+            drawerContent = {
+                if (showBottomBar) {
+                    PermanentDrawerSheet {
+                        Tab.all.forEach { tab ->
+                            NavigationDrawerItem(
+                                icon = { Icon(tab.icon, contentDescription = tab.label) },
+                                label = { Text(tab.label) },
+                                selected = selectedTab == tab,
+                                onClick = {
+                                    selectedTab = tab
+                                    navController.navigate(tab.route) {
+                                        popUpTo(navController.graph.findStartDestination().id) {
+                                            saveState = true
+                                        }
+                                        launchSingleTop = true
+                                        restoreState = true
                                     }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = MaterialTheme.colorScheme.primary,
-                                selectedTextColor = MaterialTheme.colorScheme.primary,
-                                indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                            ),
-                        )
+                                },
+                            )
+                        }
                     }
                 }
-            }
-        },
-    ) { innerPadding ->
-        MainNavHost(
-            navController = navController,
-            modifier = Modifier.padding(innerPadding),
-        )
+            },
+        ) {
+            MainNavHost(navController = navController, modifier = Modifier.fillMaxSize())
+        }
+    } else {
+        // Phone: bottom navigation bar
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            bottomBar = {
+                if (showBottomBar) {
+                    val activeTab: Tab? = when {
+                        currentDest?.route?.startsWith("movie_detail") == true -> Tab.Movies
+                        currentDest?.route?.startsWith("show_detail") == true -> {
+                            val contentType = navBackStackEntry?.arguments?.getString("contentType") ?: "show"
+                            if (contentType == "anime") Tab.Anime else Tab.Series
+                        }
+                        else -> Tab.all.firstOrNull { t ->
+                            currentDest?.hierarchy?.any { it.route == t.route } == true
+                        }
+                    }
+
+                    NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                        Tab.all.forEach { tab ->
+                            NavigationBarItem(
+                                icon = { Icon(tab.icon, contentDescription = tab.label) },
+                                label = { Text(tab.label) },
+                                selected = activeTab == tab,
+                                onClick = {
+                                    navController.navigate(tab.route) {
+                                        popUpTo(navController.graph.findStartDestination().id) {
+                                            saveState = true
+                                        }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                                    indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                ),
+                            )
+                        }
+                    }
+                }
+            },
+        ) { innerPadding ->
+            MainNavHost(
+                navController = navController,
+                modifier = Modifier.padding(innerPadding),
+            )
+        }
     }
 }
 
@@ -178,6 +222,9 @@ private fun MainNavHost(navController: NavHostController, modifier: Modifier = M
                 onSubtitleSettings = { navController.navigate("settings/subtitles") },
                 onSourceSettings = { navController.navigate("settings/sources") },
                 onRemoteSettings = { navController.navigate("settings/remote") },
+                onAppearanceSettings = { navController.navigate("settings/appearance") },
+                onDownloadsSettings = { navController.navigate("settings/downloads") },
+                onTorrentSettings = { navController.navigate("settings/torrent") },
             )
         }
         composable("settings/trakt") {
@@ -191,6 +238,24 @@ private fun MainNavHost(navController: NavHostController, modifier: Modifier = M
         }
         composable("settings/remote") {
             RemoteSettingsScreen(onBack = { navController.popBackStack() })
+        }
+        composable("settings/appearance") {
+            AppearanceSettingsScreen(onBack = { navController.popBackStack() })
+        }
+        composable("settings/torrent") {
+            TorrentSettingsScreen(onBack = { navController.popBackStack() })
+        }
+        composable("settings/downloads") {
+            DownloadsScreen(onBack = { navController.popBackStack() })
+        }
+
+        // ── Files tab ─────────────────────────────────────────────────────────
+        composable(Tab.Files.route) {
+            LocalFilesScreen(
+                onPlayFile = { uri ->
+                    navController.navigate("player_local/${Uri.encode(uri)}")
+                },
+            )
         }
 
         // ── Player (shared across all tabs) ───────────────────────────────────
@@ -215,6 +280,20 @@ private fun MainNavHost(navController: NavHostController, modifier: Modifier = M
                 season = season,
                 episode = episode,
                 contentType = contentType,
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        // ── Local file player ─────────────────────────────────────────────────
+        composable(
+            route = "player_local/{localUri}",
+            arguments = listOf(navArgument("localUri") { type = NavType.StringType }),
+        ) { backStack ->
+            val localUri = backStack.arguments!!.getString("localUri")!!
+            PlayerScreen(
+                imdbId = "",
+                quality = "",
+                localUri = localUri,
                 onBack = { navController.popBackStack() },
             )
         }

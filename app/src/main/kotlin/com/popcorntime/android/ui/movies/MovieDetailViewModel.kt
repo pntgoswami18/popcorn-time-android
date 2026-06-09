@@ -3,9 +3,11 @@ package com.popcorntime.android.ui.movies
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.popcorntime.android.data.torrent.DownloadManager
 import com.popcorntime.android.domain.model.LibraryContentType
 import com.popcorntime.android.domain.model.LibraryItem
 import com.popcorntime.android.domain.model.Movie
+import com.popcorntime.android.domain.model.Torrent
 import com.popcorntime.android.domain.repository.LibraryRepository
 import com.popcorntime.android.domain.repository.MovieRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -30,6 +32,7 @@ data class MovieDetailUiState(
 class MovieDetailViewModel @Inject constructor(
     private val repository: MovieRepository,
     private val libraryRepository: LibraryRepository,
+    private val downloadManager: DownloadManager,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -116,6 +119,11 @@ class MovieDetailViewModel @Inject constructor(
             }
             _uiState.update { it.copy(isInWatchlist = !it.isInWatchlist) }
         }
+    }
+
+    fun startDownload(torrent: Torrent) {
+        val movie = _uiState.value.movie ?: return
+        downloadManager.startDownload(movie.imdbId, movie.title, torrent.magnet.ifBlank { torrent.url })
     }
 
     private fun qualityRank(quality: String) = when (quality) {

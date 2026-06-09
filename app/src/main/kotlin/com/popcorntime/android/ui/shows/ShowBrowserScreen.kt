@@ -41,6 +41,13 @@ fun ShowBrowserScreen(
     val tabTitle = if (contentType == ContentType.SHOW) "Series" else "Anime"
 
     Scaffold(
+        floatingActionButton = {
+            FloatingActionButton(onClick = {
+                viewModel.pickRandom()?.let { imdbId -> onShowClick(imdbId) }
+            }) {
+                Icon(Icons.Default.Shuffle, contentDescription = "Random show")
+            }
+        },
         topBar = {
             TopAppBar(
                 title = {
@@ -246,6 +253,21 @@ fun ShowCard(
                 }
             }
         }
+        // Rating badge
+        if (show.rating > 0) {
+            Surface(
+                modifier = Modifier.align(Alignment.TopStart).padding(4.dp),
+                shape = RoundedCornerShape(4.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
+            ) {
+                Text(
+                    text = "★ ${"%.1f".format(show.rating)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                )
+            }
+        }
+
         IconButton(onClick = onBookmarkClick,
             modifier = Modifier.align(Alignment.TopEnd).size(32.dp)) {
             Icon(

@@ -144,6 +144,8 @@ class MovieBrowserViewModel @Inject constructor(
         }
     }
 
+    fun pickRandom(): String? = _uiState.value.movies.randomOrNull()?.imdbId
+
     private fun observeWatchedAndBookmarked() {
         viewModelScope.launch {
             repository.observeWatched().collect { ids ->

@@ -28,6 +28,7 @@ data class ShowDetailUiState(
     val isWatched: Boolean = false,
     val isBookmarked: Boolean = false,
     val isInWatchlist: Boolean = false,
+    val allWatched: Boolean = false,
 )
 
 @HiltViewModel
@@ -116,6 +117,25 @@ class ShowDetailViewModel @Inject constructor(
                 libraryRepository.addToWatchlist(imdbId, show.toLibraryItem())
             }
             _uiState.update { it.copy(isInWatchlist = !it.isInWatchlist) }
+        }
+    }
+
+    fun markAllWatched() {
+        viewModelScope.launch {
+            val show = _uiState.value.show ?: return@launch
+            show.episodes.forEach { ep ->
+                val epKey = "${show.imdbId}_s${ep.season}e${ep.episode}"
+                val epItem = LibraryItem(
+                    imdbId = epKey,
+                    title = "${show.title} S${ep.season}E${ep.episode}",
+                    posterUrl = show.posterUrl,
+                    year = show.year,
+                    contentType = if (contentType == ContentType.ANIME) LibraryContentType.ANIME else LibraryContentType.SHOW,
+                    addedAt = System.currentTimeMillis(),
+                )
+                libraryRepository.markWatched(epKey, epItem)
+            }
+            _uiState.update { it.copy(allWatched = true) }
         }
     }
 

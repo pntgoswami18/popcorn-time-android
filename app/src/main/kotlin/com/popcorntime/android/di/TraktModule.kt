@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
 import com.popcorntime.android.data.trakt.TraktAuthService
+import com.popcorntime.android.data.trakt.TraktScrobbleService
 import com.popcorntime.android.data.trakt.TraktSyncService
 import com.popcorntime.android.data.trakt.TraktTokenStore
 import dagger.Module
@@ -68,4 +69,11 @@ object TraktModule {
         @Named("trakt") client: HttpClient,
         tokenStore: TraktTokenStore,
     ): TraktSyncService = TraktSyncService(client, tokenStore)
+
+    @Provides
+    @Singleton
+    fun provideTraktScrobbleService(
+        @Named("trakt") client: HttpClient,
+        tokenStore: TraktTokenStore,
+    ): TraktScrobbleService = TraktScrobbleService(client, tokenStore)
 }

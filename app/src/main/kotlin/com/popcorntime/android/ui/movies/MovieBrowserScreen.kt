@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -38,6 +39,13 @@ fun MovieBrowserScreen(
     var showSearch by remember { mutableStateOf(false) }
 
     Scaffold(
+        floatingActionButton = {
+            FloatingActionButton(onClick = {
+                viewModel.pickRandom()?.let { imdbId -> onMovieClick(imdbId) }
+            }) {
+                Icon(Icons.Default.Shuffle, contentDescription = "Random movie")
+            }
+        },
         topBar = {
             TopAppBar(
                 title = {
@@ -311,6 +319,23 @@ fun MovieCard(
                         color = Color.White.copy(alpha = 0.6f),
                     )
                 }
+            }
+        }
+
+        // Rating badge (top-right, above bookmark if not bookmarked)
+        if (movie.rating > 0) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(4.dp),
+                shape = RoundedCornerShape(4.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
+            ) {
+                Text(
+                    text = "★ ${"%.1f".format(movie.rating)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                )
             }
         }
 

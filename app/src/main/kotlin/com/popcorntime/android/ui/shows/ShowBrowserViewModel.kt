@@ -143,6 +143,8 @@ class ShowBrowserViewModel @Inject constructor(
         }
     }
 
+    fun pickRandom(): String? = _uiState.value.shows.randomOrNull()?.imdbId
+
     private fun observeState() {
         viewModelScope.launch {
             repository.observeWatched().collect { ids ->

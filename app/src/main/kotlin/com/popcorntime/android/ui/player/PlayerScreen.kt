@@ -2,7 +2,12 @@ package com.popcorntime.android.ui.player
 
 import android.app.Activity
 import android.content.pm.ActivityInfo
+import android.os.Build
+import android.util.TypedValue
 import android.view.ViewGroup
+import android.view.WindowManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -12,10 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Cast
-import androidx.compose.material.icons.filled.CastConnected
-import androidx.compose.material.icons.filled.ClosedCaption
-import androidx.compose.material.icons.filled.ClosedCaptionOff
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,15 +27,21 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.MediaSession
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.popcorntime.android.MainActivity
 import com.popcorntime.android.data.cast.DlnaRenderer
 import com.popcorntime.android.data.remote.PlaybackCommand
 import com.popcorntime.android.data.remote.PlaybackController
 import com.popcorntime.android.data.subtitles.Subtitle
+import com.popcorntime.android.data.subtitles.SubtitleStyle
+import com.popcorntime.android.data.subtitles.SubtitleStyleStore
 import com.popcorntime.android.domain.model.CastState
 import com.popcorntime.android.domain.model.StreamState
 import com.popcorntime.android.ui.cast.CastBottomSheet
@@ -47,13 +55,18 @@ fun PlayerScreen(
     season: Int = -1,
     episode: Int = -1,
     contentType: String = "movie",
+    localUri: String? = null,
     onBack: () -> Unit,
     viewModel: PlayerViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
     val streamState by viewModel.streamState.collectAsStateWithLifecycle()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val countdownSeconds by viewModel.countdownSeconds.collectAsStateWithLifecycle()
+    val resizeMode by viewModel.resizeMode.collectAsStateWithLifecycle()
+    val brightness by viewModel.brightness.collectAsStateWithLifecycle()
 
+    // Set screen orientation to landscape
     DisposableEffect(Unit) {
         val activity = context as? Activity
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
@@ -63,95 +76,189 @@ fun PlayerScreen(
         }
     }
 
+    // Signal PiP visibility to MainActivity
+    val mainActivity = context as? MainActivity
+    DisposableEffect(Unit) {
+        mainActivity?.setPlayerVisible(true)
+        onDispose { mainActivity?.setPlayerVisible(false) }
+    }
+
+    // Detect PiP mode
+    val isInPip = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val act = context as Activity
+        remember { derivedStateOf { act.isInPictureInPictureMode } }.value
+    } else false
+
+    // Screen brightness
+    val window = (context as Activity).window
+    LaunchedEffect(brightness) {
+        window.attributes = window.attributes.also {
+            it.screenBrightness = if (brightness < 0f)
+                WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+            else brightness
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            window.attributes = window.attributes.also {
+                it.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+            }
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
 
-        when (val s = streamState) {
-            is StreamState.Idle -> LoadingIndicator()
-            is StreamState.Buffering -> BufferingOverlay(s.progress, s.downloadSpeed, s.seeds, s.peers)
-            is StreamState.Ready -> {
+        // Determine stream URL: local file or torrent stream
+        val effectiveStreamUrl = localUri ?: uiState.streamUrl
+            ?: (streamState as? StreamState.Ready)?.streamUrl
+
+        if (localUri != null) {
+            // Local file player
+            if (effectiveStreamUrl != null) {
                 ExoPlayerView(
-                    streamUrl = s.streamUrl,
+                    streamUrl = effectiveStreamUrl,
                     subtitleUrl = uiState.subtitleUrl,
                     viewModel = viewModel,
                     playbackController = viewModel.playbackController,
-                )
-                StreamStatsOverlay(
-                    dlSpeed = s.downloadSpeed,
-                    ulSpeed = s.uploadSpeed,
-                    seeds = s.seeds,
-                    modifier = Modifier.align(Alignment.TopEnd).padding(top = 48.dp, end = 8.dp),
+                    resizeMode = resizeMode,
                 )
             }
-            is StreamState.Error -> ErrorView(s.message, onBack)
-        }
-
-        // Top controls row
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.TopStart)
-                .padding(8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
-            }
-            Row {
-                val isCasting = uiState.castState is CastState.Connected
-                IconButton(onClick = viewModel::toggleCastSheet) {
-                    Icon(
-                        imageVector = if (isCasting) Icons.Default.CastConnected else Icons.Default.Cast,
-                        contentDescription = "Cast",
-                        tint = if (isCasting) MaterialTheme.colorScheme.primary else Color.White,
+        } else {
+            when (val s = streamState) {
+                is StreamState.Idle -> LoadingIndicator()
+                is StreamState.Buffering -> BufferingOverlay(s.progress, s.downloadSpeed, s.seeds, s.peers)
+                is StreamState.Ready -> {
+                    ExoPlayerView(
+                        streamUrl = s.streamUrl,
+                        subtitleUrl = uiState.subtitleUrl,
+                        viewModel = viewModel,
+                        playbackController = viewModel.playbackController,
+                        resizeMode = resizeMode,
                     )
+                    if (!isInPip) {
+                        StreamStatsOverlay(
+                            dlSpeed = s.downloadSpeed,
+                            ulSpeed = s.uploadSpeed,
+                            seeds = s.seeds,
+                            modifier = Modifier.align(Alignment.TopEnd).padding(top = 48.dp, end = 8.dp),
+                        )
+                    }
                 }
-                IconButton(onClick = viewModel::toggleSubtitlePicker) {
-                    Icon(
-                        imageVector = if (uiState.selectedSubtitle != null) Icons.Default.ClosedCaption
-                                      else Icons.Default.ClosedCaptionOff,
-                        contentDescription = "Subtitles",
-                        tint = if (uiState.selectedSubtitle != null) MaterialTheme.colorScheme.primary
-                               else Color.White,
-                    )
-                }
+                is StreamState.Error -> ErrorView(s.message, onBack)
             }
         }
 
-        // Subtitle picker bottom sheet
-        if (uiState.showSubtitlePicker) {
-            SubtitlePicker(
-                subtitles = uiState.subtitles,
-                selectedSubtitle = uiState.selectedSubtitle,
-                isLoading = uiState.isLoadingSubtitles,
-                onSelect = viewModel::selectSubtitle,
-                onDismiss = viewModel::toggleSubtitlePicker,
-                modifier = Modifier.align(Alignment.BottomCenter),
-            )
-        }
+        if (!isInPip) {
+            // Top controls row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.TopStart)
+                    .padding(8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                }
+                Row {
+                    // Aspect ratio cycle
+                    IconButton(onClick = viewModel::cycleResizeMode) {
+                        Icon(Icons.Default.AspectRatio, contentDescription = "Aspect Ratio", tint = Color.White)
+                    }
+                    // Brightness
+                    var showBrightnessDialog by remember { mutableStateOf(false) }
+                    IconButton(onClick = { showBrightnessDialog = true }) {
+                        Icon(Icons.Default.BrightnessHigh, contentDescription = "Brightness", tint = Color.White)
+                    }
+                    if (showBrightnessDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showBrightnessDialog = false },
+                            title = { Text("Brightness") },
+                            text = {
+                                Slider(
+                                    value = brightness.coerceAtLeast(0f),
+                                    onValueChange = viewModel::setBrightness,
+                                    valueRange = 0f..1f,
+                                )
+                            },
+                            confirmButton = {
+                                TextButton(onClick = { showBrightnessDialog = false }) { Text("OK") }
+                            },
+                        )
+                    }
+                    // Audio track picker
+                    var showAudioPicker by remember { mutableStateOf(false) }
+                    IconButton(onClick = { showAudioPicker = true }) {
+                        Icon(Icons.Default.Headset, contentDescription = "Audio Track", tint = Color.White)
+                    }
+                    // Cast
+                    val isCasting = uiState.castState is CastState.Connected
+                    IconButton(onClick = viewModel::toggleCastSheet) {
+                        Icon(
+                            imageVector = if (isCasting) Icons.Default.CastConnected else Icons.Default.Cast,
+                            contentDescription = "Cast",
+                            tint = if (isCasting) MaterialTheme.colorScheme.primary else Color.White,
+                        )
+                    }
+                    // Subtitles
+                    IconButton(onClick = viewModel::toggleSubtitlePicker) {
+                        Icon(
+                            imageVector = if (uiState.selectedSubtitle != null) Icons.Default.ClosedCaption
+                                          else Icons.Default.ClosedCaptionOff,
+                            contentDescription = "Subtitles",
+                            tint = if (uiState.selectedSubtitle != null) MaterialTheme.colorScheme.primary
+                                   else Color.White,
+                        )
+                    }
+                }
+            }
 
-        // Cast bottom sheet
-        if (uiState.showCastSheet) {
-            CastBottomSheet(
-                castState = uiState.castState,
-                kodiAddress = uiState.kodiAddress,
-                dlnaRenderers = uiState.dlnaRenderers,
-                onChromecastClick = viewModel::castToChromecast,
-                onExternalPlayerClick = viewModel::castToExternalPlayer,
-                onKodiConnect = viewModel::castToKodi,
-                onDlnaSelect = viewModel::castToDlna,
-                onDismiss = viewModel::toggleCastSheet,
-            )
-        }
+            // Subtitle picker
+            if (uiState.showSubtitlePicker) {
+                SubtitlePicker(
+                    subtitles = uiState.subtitles,
+                    selectedSubtitle = uiState.selectedSubtitle,
+                    isLoading = uiState.isLoadingSubtitles,
+                    onSelect = viewModel::selectSubtitle,
+                    onImportFromDevice = viewModel::loadCustomSubtitle,
+                    onDismiss = viewModel::toggleSubtitlePicker,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                )
+            }
 
-        // Cast overlay (active casting status strip)
-        val castState = uiState.castState
-        if (castState is CastState.Connected) {
-            CastOverlay(
-                castState = castState,
-                onDisconnect = viewModel::disconnectCast,
-                modifier = Modifier.align(Alignment.BottomCenter),
-            )
+            // Cast bottom sheet
+            if (uiState.showCastSheet) {
+                CastBottomSheet(
+                    castState = uiState.castState,
+                    kodiAddress = uiState.kodiAddress,
+                    dlnaRenderers = uiState.dlnaRenderers,
+                    onChromecastClick = viewModel::castToChromecast,
+                    onExternalPlayerClick = viewModel::castToExternalPlayer,
+                    onKodiConnect = viewModel::castToKodi,
+                    onDlnaSelect = viewModel::castToDlna,
+                    onDismiss = viewModel::toggleCastSheet,
+                )
+            }
+
+            // Cast overlay
+            val castState = uiState.castState
+            if (castState is CastState.Connected) {
+                CastOverlay(
+                    castState = castState,
+                    onDisconnect = viewModel::disconnectCast,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                )
+            }
+
+            // Auto-play countdown overlay
+            if (countdownSeconds != null) {
+                CountdownOverlay(
+                    seconds = countdownSeconds!!,
+                    onCancel = viewModel::cancelCountdown,
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+                )
+            }
         }
     }
 }
@@ -163,6 +270,8 @@ private fun ExoPlayerView(
     subtitleUrl: String?,
     viewModel: PlayerViewModel,
     playbackController: PlaybackController,
+    resizeMode: Int = AspectRatioFrameLayout.RESIZE_MODE_FIT,
+    subtitleStyleStore: SubtitleStyleStore? = null,
 ) {
     val context = LocalContext.current
     var playbackStarted by remember { mutableStateOf(false) }
@@ -173,12 +282,17 @@ private fun ExoPlayerView(
         }
     }
 
-    // Release player only when the composable leaves the composition entirely
     DisposableEffect(Unit) {
         onDispose { exoPlayer.release() }
     }
 
-    // Collect playback commands from the HTTP remote control relay
+    // Media Session
+    DisposableEffect(exoPlayer) {
+        val session = MediaSession.Builder(context, exoPlayer).build()
+        onDispose { session.release() }
+    }
+
+    // Collect playback commands
     LaunchedEffect(playbackController) {
         playbackController.command.collect { cmd ->
             when (cmd) {
@@ -190,7 +304,7 @@ private fun ExoPlayerView(
         }
     }
 
-    // Report position/duration/isPlaying back to the controller so the HTTP status endpoint is accurate
+    // Report position/duration/isPlaying
     DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
             override fun onEvents(player: Player, events: Player.Events) {
@@ -205,10 +319,11 @@ private fun ExoPlayerView(
         onDispose { exoPlayer.removeListener(listener) }
     }
 
-    // Rebuild media item whenever stream or subtitle changes — does NOT release player
+    // Rebuild media item when stream or subtitle changes
     LaunchedEffect(streamUrl, subtitleUrl) {
+        val isLocalUri = streamUrl.startsWith("content://") || streamUrl.startsWith("file://")
         val mediaItemBuilder = MediaItem.Builder().setUri(streamUrl)
-        if (subtitleUrl != null) {
+        if (subtitleUrl != null && !isLocalUri) {
             val subtitleMime = if (subtitleUrl.endsWith(".vtt", ignoreCase = true))
                 androidx.media3.common.MimeTypes.TEXT_VTT
             else
@@ -224,7 +339,7 @@ private fun ExoPlayerView(
         exoPlayer.prepare()
     }
 
-    // Register listener for playback completion — does NOT release player
+    // Playback completion listener
     DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -252,10 +367,48 @@ private fun ExoPlayerView(
                 useController = true
                 setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
                 setShowSubtitleButton(true)
+                this.resizeMode = resizeMode
             }
+        },
+        update = { playerView ->
+            playerView.resizeMode = resizeMode
         },
         modifier = Modifier.fillMaxSize(),
     )
+}
+
+@Composable
+private fun CountdownOverlay(
+    seconds: Int,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        color = Color.Black.copy(alpha = 0.7f),
+        shape = RoundedCornerShape(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            CircularProgressIndicator(
+                progress = { seconds / 10f },
+                modifier = Modifier.size(32.dp),
+                color = MaterialTheme.colorScheme.primary,
+                strokeWidth = 3.dp,
+            )
+            Text(
+                text = "Next episode in ${seconds}s",
+                color = Color.White,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            TextButton(onClick = onCancel) {
+                Text("Cancel", color = MaterialTheme.colorScheme.primary)
+            }
+        }
+    }
 }
 
 @Composable
@@ -264,9 +417,14 @@ private fun SubtitlePicker(
     selectedSubtitle: Subtitle?,
     isLoading: Boolean,
     onSelect: (Subtitle?) -> Unit,
+    onImportFromDevice: (android.net.Uri) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { onImportFromDevice(it) }
+    }
+
     Surface(
         modifier = modifier.fillMaxWidth().heightIn(max = 320.dp),
         shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
@@ -287,6 +445,22 @@ private fun SubtitlePicker(
                             isSelected = selectedSubtitle == null,
                             onClick = { onSelect(null) },
                         )
+                    }
+                    item {
+                        // Import from device
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { launcher.launch(arrayOf("*/*")) }
+                                .padding(vertical = 12.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Default.FileCopy, contentDescription = null,
+                                modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Import from device",
+                                style = MaterialTheme.typography.bodyMedium)
+                        }
                     }
                     items(subtitles) { sub ->
                         SubtitleRow(

@@ -8,10 +8,13 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ClosedCaption
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SettingsRemote
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.SyncAlt
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,6 +37,9 @@ fun LibraryScreen(
     onSubtitleSettings: () -> Unit = {},
     onSourceSettings: () -> Unit = {},
     onRemoteSettings: () -> Unit = {},
+    onAppearanceSettings: () -> Unit = {},
+    onDownloadsSettings: () -> Unit = {},
+    onTorrentSettings: () -> Unit = {},
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -57,6 +63,15 @@ fun LibraryScreen(
                                 Icon(Icons.Default.SyncAlt, "Sync with Trakt")
                             }
                         }
+                    }
+                    IconButton(onClick = onAppearanceSettings) {
+                        Icon(Icons.Default.Palette, "Appearance")
+                    }
+                    IconButton(onClick = onDownloadsSettings) {
+                        Icon(Icons.Default.Download, "Downloads")
+                    }
+                    IconButton(onClick = onTorrentSettings) {
+                        Icon(Icons.Default.Tune, "Torrent Settings")
                     }
                     IconButton(onClick = onSourceSettings) {
                         Icon(Icons.Default.Storage, "Torrent Sources")

@@ -86,9 +86,11 @@ fun ShowDetailScreen(
                 show = state.show!!,
                 seasons = state.seasons,
                 selectedSeason = state.selectedSeason,
+                allWatched = state.allWatched,
                 modifier = Modifier.padding(padding),
                 onSeasonSelect = viewModel::selectSeason,
                 onEpisodePlay = onEpisodePlay,
+                onMarkAllWatched = viewModel::markAllWatched,
             )
         }
     }
@@ -99,9 +101,11 @@ private fun ShowDetailContent(
     show: Show,
     seasons: List<Season>,
     selectedSeason: Int,
+    allWatched: Boolean = false,
     modifier: Modifier = Modifier,
     onSeasonSelect: (Int) -> Unit,
     onEpisodePlay: (String, Int, Int, String) -> Unit,
+    onMarkAllWatched: () -> Unit = {},
 ) {
     LazyColumn(modifier = modifier) {
         // Hero backdrop
@@ -185,6 +189,17 @@ private fun ShowDetailContent(
                 Spacer(Modifier.height(10.dp))
                 Text(show.synopsis, style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = onMarkAllWatched,
+                    enabled = !allWatched,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Default.Visibility, contentDescription = null,
+                        modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (allWatched) "All episodes marked watched" else "Mark all watched")
+                }
                 Spacer(Modifier.height(16.dp))
             }
         }

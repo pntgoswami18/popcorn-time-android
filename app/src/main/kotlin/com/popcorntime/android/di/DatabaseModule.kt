@@ -6,6 +6,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.popcorntime.android.data.db.AppDatabase
 import com.popcorntime.android.data.db.dao.BookmarkedDao
+import com.popcorntime.android.data.db.dao.DownloadDao
 import com.popcorntime.android.data.db.dao.LibraryItemDao
 import com.popcorntime.android.data.db.dao.WatchedDao
 import com.popcorntime.android.data.db.dao.WatchlistDao
@@ -48,6 +49,21 @@ private val MIGRATION_1_2 = object : Migration(1, 2) {
     }
 }
 
+private val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS `downloads` (
+                `imdbId` TEXT NOT NULL,
+                `title` TEXT NOT NULL,
+                `magnetUrl` TEXT NOT NULL,
+                `filePath` TEXT,
+                `completedAt` INTEGER,
+                PRIMARY KEY(`imdbId`)
+            )"""
+        )
+    }
+}
+
 @Module
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
@@ -56,13 +72,14 @@ object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, "popcorntime.db")
-            .addMigrations(MIGRATION_1_2)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             .build()
 
     @Provides fun provideWatchedDao(db: AppDatabase): WatchedDao = db.watchedDao()
     @Provides fun provideBookmarkedDao(db: AppDatabase): BookmarkedDao = db.bookmarkedDao()
     @Provides fun provideWatchlistDao(db: AppDatabase): WatchlistDao = db.watchlistDao()
     @Provides fun provideLibraryItemDao(db: AppDatabase): LibraryItemDao = db.libraryItemDao()
+    @Provides fun provideDownloadDao(db: AppDatabase): DownloadDao = db.downloadDao()
 }
 
 @Module

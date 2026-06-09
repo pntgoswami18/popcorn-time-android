@@ -40,7 +40,10 @@ fun MovieDetailScreen(
 
     LaunchedEffect(imdbId) { viewModel.loadMovie(imdbId) }
 
+    val snackbarHostState = remember { SnackbarHostState() }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text(state.movie?.title ?: "", maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -98,6 +101,9 @@ fun MovieDetailScreen(
                 onTrailerClick = { url ->
                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                 },
+                onDownloadClick = { torrent ->
+                    viewModel.startDownload(torrent)
+                },
             )
         }
     }
@@ -113,6 +119,7 @@ private fun MovieDetailContent(
     onQualitySelect: (String) -> Unit,
     onPlayClick: () -> Unit,
     onTrailerClick: (String) -> Unit,
+    onDownloadClick: (com.popcorntime.android.domain.model.Torrent) -> Unit = {},
 ) {
     Column(modifier = modifier.verticalScroll(rememberScrollState())) {
         // Backdrop + poster hero
@@ -197,24 +204,36 @@ private fun MovieDetailContent(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     movie.torrents.keys.sortedDescending().forEach { quality ->
                         val torrent = movie.torrents[quality]!!
-                        FilterChip(
-                            selected = selectedQuality == quality,
-                            onClick = { onQualitySelect(quality) },
-                            label = {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text(quality)
-                                    Text(
-                                        "↑${torrent.seeds}  ↓${torrent.peers}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-                            ),
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            FilterChip(
+                                selected = selectedQuality == quality,
+                                onClick = { onQualitySelect(quality) },
+                                label = {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(quality)
+                                        Text(
+                                            "↑${torrent.seeds}  ↓${torrent.peers}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                                ),
+                            )
+                            IconButton(
+                                onClick = { onDownloadClick(torrent) },
+                                modifier = Modifier.size(32.dp),
+                            ) {
+                                Icon(Icons.Default.Download, contentDescription = "Download $quality",
+                                    modifier = Modifier.size(18.dp))
+                            }
+                        }
                     }
                 }
                 Spacer(Modifier.height(16.dp))
