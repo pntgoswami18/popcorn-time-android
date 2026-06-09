@@ -48,6 +48,10 @@ class DownloadManager @Inject constructor(
                 return@launch
             }
             try {
+                // Set activeDownloadImdbId BEFORE any suspend call so that cancelDownload's
+                // compareAndSet can always find it from the moment this try body begins.
+                // The finally block always clears it regardless of how we exit.
+                activeDownloadImdbId.set(imdbId)
                 val saveDir = context.getExternalFilesDir("downloads") ?: context.filesDir
                 val entity = DownloadEntity(
                     imdbId = imdbId,
@@ -56,14 +60,12 @@ class DownloadManager @Inject constructor(
                     filePath = saveDir.absolutePath,
                 )
                 downloadDao.insert(entity)
-                // Check if cancelDownload fired while we were persisting to DB (before
-                // activeDownloadImdbId was set). cancelDownload removes from inFlightIds as a
-                // cancellation signal, so if we're no longer in the set we must abort.
-                if (!inFlightIds.contains(imdbId)) {
+                // If cancelDownload fired concurrently it cleared activeDownloadImdbId via CAS
+                // and removed from inFlightIds. Re-check: if we're no longer active, abort.
+                if (activeDownloadImdbId.get() != imdbId) {
                     downloadDao.delete(imdbId)
                     return@launch
                 }
-                activeDownloadImdbId.set(imdbId)
                 val torrent = Torrent(
                     url = magnetUrl,
                     magnet = magnetUrl,
