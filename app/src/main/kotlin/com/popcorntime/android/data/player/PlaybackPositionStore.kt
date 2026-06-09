@@ -13,14 +13,16 @@ import javax.inject.Singleton
 class PlaybackPositionStore @Inject constructor(
     @Named("playerDataStore") val prefs: DataStore<Preferences>,
 ) {
+    private fun safeKey(raw: String) = raw.replace(Regex("[^A-Za-z0-9_\\-.]"), "_")
+
     suspend fun savePosition(key: String, positionMs: Long) {
-        prefs.edit { it[longPreferencesKey(key)] = positionMs }
+        prefs.edit { it[longPreferencesKey(safeKey(key))] = positionMs }
     }
 
     suspend fun getPosition(key: String): Long =
-        prefs.data.first()[longPreferencesKey(key)] ?: 0L
+        prefs.data.first()[longPreferencesKey(safeKey(key))] ?: 0L
 
     suspend fun clearPosition(key: String) {
-        prefs.edit { it.remove(longPreferencesKey(key)) }
+        prefs.edit { it.remove(longPreferencesKey(safeKey(key))) }
     }
 }

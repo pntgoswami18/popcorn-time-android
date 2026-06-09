@@ -2,7 +2,6 @@ package com.popcorntime.android.ui.player
 
 import android.app.Activity
 import android.content.pm.ActivityInfo
-import android.os.Build
 import android.util.TypedValue
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -76,18 +75,14 @@ fun PlayerScreen(
         }
     }
 
-    // Signal PiP visibility to MainActivity
+    // Signal PiP visibility to MainActivity + detect PiP mode
     val mainActivity = context as? MainActivity
     DisposableEffect(Unit) {
         mainActivity?.setPlayerVisible(true)
         onDispose { mainActivity?.setPlayerVisible(false) }
     }
 
-    // Detect PiP mode
-    val isInPip = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        val act = context as Activity
-        remember { derivedStateOf { act.isInPictureInPictureMode } }.value
-    } else false
+    val isInPip by (mainActivity?.isInPip ?: remember { mutableStateOf(false) })
 
     // Screen brightness
     val window = (context as Activity).window

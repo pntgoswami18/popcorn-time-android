@@ -1,6 +1,5 @@
 package com.popcorntime.android.data.trakt
 
-import com.popcorntime.android.BuildConfig
 import com.popcorntime.android.domain.model.LibraryContentType
 import io.ktor.client.HttpClient
 import io.ktor.client.request.header
@@ -33,8 +32,6 @@ class TraktScrobbleService @Inject constructor(
         runCatching {
             client.post("https://api.trakt.tv/scrobble/$action") {
                 header("Authorization", "Bearer $token")
-                header("trakt-api-version", "2")
-                header("trakt-api-key", BuildConfig.TRAKT_CLIENT_ID)
                 contentType(ContentType.Application.Json)
                 setBody(body)
             }

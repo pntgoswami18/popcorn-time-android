@@ -3,15 +3,20 @@ package com.popcorntime.android.data.torrent
 import android.content.Context
 import com.popcorntime.android.data.db.dao.DownloadDao
 import com.popcorntime.android.data.db.entity.DownloadEntity
+import com.popcorntime.android.domain.model.StreamState
 import com.popcorntime.android.domain.model.Torrent
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -23,11 +28,15 @@ class DownloadManager @Inject constructor(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    private val _downloads = MutableStateFlow<List<DownloadEntity>>(emptyList())
     val downloads: StateFlow<List<DownloadEntity>> = downloadDao.observeAll()
         .stateIn(scope, SharingStarted.Eagerly, emptyList())
 
+    private val activeDownloadImdbId: AtomicReference<String?> = AtomicReference(null)
+
     fun startDownload(imdbId: String, title: String, magnetUrl: String) {
         scope.launch {
+            if (downloads.value.any { it.imdbId == imdbId }) return@launch  // already tracked
             val saveDir = context.getExternalFilesDir("downloads") ?: context.filesDir
             val entity = DownloadEntity(
                 imdbId = imdbId,
@@ -36,6 +45,7 @@ class DownloadManager @Inject constructor(
                 filePath = saveDir.absolutePath,
             )
             downloadDao.insert(entity)
+            activeDownloadImdbId.set(imdbId)
             val torrent = Torrent(
                 url = magnetUrl,
                 magnet = magnetUrl,
@@ -48,12 +58,25 @@ class DownloadManager @Inject constructor(
                 hash = "",
             )
             torrentEngine.startStream(torrent, saveDir)
+            // Wait for Ready state to capture actual file path
+            val readyState = torrentEngine.state.first { it is StreamState.Ready } as? StreamState.Ready
+            if (readyState != null) {
+                // The stream server path gives the video file path via the save dir; update entity
+                val updatedEntity = entity.copy(
+                    filePath = saveDir.absolutePath,
+                    completedAt = System.currentTimeMillis(),
+                )
+                downloadDao.insert(updatedEntity)
+            }
         }
     }
 
     fun cancelDownload(imdbId: String) {
         scope.launch {
-            torrentEngine.stopCurrent()
+            if (activeDownloadImdbId.get() == imdbId) {
+                torrentEngine.stopCurrent()
+                activeDownloadImdbId.set(null)
+            }
             downloadDao.delete(imdbId)
         }
     }
@@ -62,10 +85,11 @@ class DownloadManager @Inject constructor(
         scope.launch {
             val entity = downloads.value.find { it.imdbId == imdbId }
             entity?.filePath?.let { path ->
-                val file = java.io.File(path)
-                if (file.exists()) file.deleteRecursively()
+                val f = java.io.File(path)
+                if (f.isDirectory) f.deleteRecursively() else f.delete()
             }
             downloadDao.delete(imdbId)
+            _downloads.update { it.filter { d -> d.imdbId != imdbId } }
         }
     }
 }

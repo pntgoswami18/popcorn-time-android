@@ -117,17 +117,19 @@ class TorrentEngine @Inject constructor(
     }
 
     fun applySpeedLimits(downloadKbps: Int, uploadKbps: Int) {
-        runCatching {
-            val sp = session.settings()
-            sp.setInteger(
-                settings_pack.int_types.download_rate_limit.swigValue(),
-                if (downloadKbps > 0) downloadKbps * 1024 else 0,
-            )
-            sp.setInteger(
-                settings_pack.int_types.upload_rate_limit.swigValue(),
-                if (uploadKbps > 0) uploadKbps * 1024 else 0,
-            )
-            session.applySettings(sp)
+        scope.launch {
+            runCatching {
+                val sp = session.settings()
+                sp.setInteger(
+                    settings_pack.int_types.download_rate_limit.swigValue(),
+                    if (downloadKbps > 0) downloadKbps * 1024 else 0,
+                )
+                sp.setInteger(
+                    settings_pack.int_types.upload_rate_limit.swigValue(),
+                    if (uploadKbps > 0) uploadKbps * 1024 else 0,
+                )
+                session.applySettings(sp)
+            }
         }
     }
 

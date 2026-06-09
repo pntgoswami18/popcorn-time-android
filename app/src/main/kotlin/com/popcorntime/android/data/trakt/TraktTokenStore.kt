@@ -29,8 +29,12 @@ class TraktTokenStore constructor(
             !token.isNullOrBlank() && System.currentTimeMillis() < expiresAt
         }
 
-    suspend fun getAccessToken(): String? =
-        dataStore.data.first()[accessTokenKey]
+    suspend fun getAccessToken(): String? {
+        val prefs = dataStore.data.first()
+        val token = prefs[accessTokenKey] ?: return null
+        val expiresAt = prefs[expiresAtKey] ?: 0L
+        return if (System.currentTimeMillis() < expiresAt) token else null
+    }
 
     suspend fun isLoggedIn(): Boolean =
         isTraktConnected().first()

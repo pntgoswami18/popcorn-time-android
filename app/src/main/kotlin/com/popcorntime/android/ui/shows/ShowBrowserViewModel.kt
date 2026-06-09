@@ -2,6 +2,7 @@ package com.popcorntime.android.ui.shows
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.popcorntime.android.data.preferences.BrowserPrefsStore
 import com.popcorntime.android.domain.model.ContentType
 import com.popcorntime.android.domain.model.LibraryContentType
 import com.popcorntime.android.domain.model.LibraryItem
@@ -13,8 +14,11 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -37,6 +41,7 @@ data class ShowBrowserUiState(
 class ShowBrowserViewModel @Inject constructor(
     private val repository: ShowRepository,
     private val libraryRepository: LibraryRepository,
+    private val browserPrefsStore: BrowserPrefsStore,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ShowBrowserUiState())
@@ -45,6 +50,18 @@ class ShowBrowserViewModel @Inject constructor(
     private var contentType: ContentType = ContentType.SHOW
     private var searchDebounceJob: Job? = null
     private var observingState = false
+
+    val watchedIds: StateFlow<Set<String>> = libraryRepository.observeWatched()
+        .map { items -> items.map { it.imdbId }.toSet() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    val hideWatched: StateFlow<Boolean> = browserPrefsStore.hideWatchedShows
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    fun applyFilters(shows: List<Show>): List<Show> {
+        if (!hideWatched.value) return shows
+        return shows.filter { it.imdbId !in watchedIds.value }
+    }
 
     fun init(type: ContentType) {
         if (contentType == type && _uiState.value.shows.isNotEmpty()) return

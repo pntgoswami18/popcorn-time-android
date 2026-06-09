@@ -2,6 +2,7 @@ package com.popcorntime.android.ui.movies
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.popcorntime.android.data.preferences.BrowserPrefsStore
 import com.popcorntime.android.domain.model.ALL_GENRES
 import com.popcorntime.android.domain.model.ALL_QUALITIES
 import com.popcorntime.android.domain.model.LibraryContentType
@@ -15,8 +16,11 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -41,12 +45,38 @@ data class MovieBrowserUiState(
 class MovieBrowserViewModel @Inject constructor(
     private val repository: MovieRepository,
     private val libraryRepository: LibraryRepository,
+    private val browserPrefsStore: BrowserPrefsStore,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MovieBrowserUiState())
     val uiState: StateFlow<MovieBrowserUiState> = _uiState.asStateFlow()
 
     private var searchDebounceJob: Job? = null
+
+    val watchedIds: StateFlow<Set<String>> = libraryRepository.observeWatched()
+        .map { items -> items.map { it.imdbId }.toSet() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    val hideWatched: StateFlow<Boolean> = browserPrefsStore.hideWatchedMovies
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    private val ratingOrder = listOf("G", "PG", "PG-13", "R", "NC-17")
+
+    val maxRating: StateFlow<String> = browserPrefsStore.maxContentRating
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
+
+    fun applyFilters(movies: List<Movie>): List<Movie> {
+        var result = movies
+        if (hideWatched.value) {
+            result = result.filter { it.imdbId !in watchedIds.value }
+        }
+        val max = maxRating.value.ifEmpty { return result }
+        val maxIdx = ratingOrder.indexOf(max).takeIf { it >= 0 } ?: return result
+        return result.filter { m ->
+            val idx = ratingOrder.indexOf(m.certification)
+            idx < 0 || idx <= maxIdx
+        }
+    }
 
     init {
         loadMovies(reset = true)

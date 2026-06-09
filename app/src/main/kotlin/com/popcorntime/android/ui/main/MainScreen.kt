@@ -60,6 +60,8 @@ fun MainScreen(isTv: Boolean = false) {
     // Hide bottom bar when inside the player or settings screens
     val showBottomBar = currentDest?.route?.let { route ->
         !route.startsWith("player/") &&
+            !route.startsWith("player_local/") &&
+            route != "player_local" &&
             route != "settings/trakt" &&
             route != "settings/subtitles" &&
             route != "settings/sources" &&
@@ -70,11 +72,11 @@ fun MainScreen(isTv: Boolean = false) {
     } != false
 
     if (isTv) {
-        // TV: PermanentNavigationDrawer side nav
+        // TV: PermanentNavigationDrawer side nav — only when player is not shown
         var selectedTab by remember { mutableStateOf<Tab>(Tab.Movies) }
-        PermanentNavigationDrawer(
-            drawerContent = {
-                if (showBottomBar) {
+        if (showBottomBar) {
+            PermanentNavigationDrawer(
+                drawerContent = {
                     PermanentDrawerSheet {
                         Tab.all.forEach { tab ->
                             NavigationDrawerItem(
@@ -94,9 +96,11 @@ fun MainScreen(isTv: Boolean = false) {
                             )
                         }
                     }
-                }
-            },
-        ) {
+                },
+            ) {
+                MainNavHost(navController = navController, modifier = Modifier.fillMaxSize())
+            }
+        } else {
             MainNavHost(navController = navController, modifier = Modifier.fillMaxSize())
         }
     } else {

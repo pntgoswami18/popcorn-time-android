@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import com.google.accompanist.systemuicontroller.rememberSystemUiController
 import com.popcorntime.android.data.preferences.ThemeMode
@@ -30,6 +31,17 @@ class MainActivity : ComponentActivity() {
 
     fun setPlayerVisible(visible: Boolean) {
         _isPlayerVisible = visible
+    }
+
+    private val _isInPip = mutableStateOf(false)
+    val isInPip: androidx.compose.runtime.State<Boolean> get() = _isInPip
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: android.content.res.Configuration,
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        _isInPip.value = isInPictureInPictureMode
     }
 
     override fun onUserLeaveHint() {

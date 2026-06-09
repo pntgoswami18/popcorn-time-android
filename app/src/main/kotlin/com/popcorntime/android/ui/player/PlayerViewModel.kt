@@ -34,6 +34,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -103,6 +104,7 @@ class PlayerViewModel @Inject constructor(
 
     // Position save job
     private var positionSaveJob: Job? = null
+    private var resumeJob: Job? = null
 
     init {
         castManager.chromeCaster.registerSessionListener()
@@ -131,16 +133,18 @@ class PlayerViewModel @Inject constructor(
         }
         // Observe isPlaying for Trakt scrobbling
         viewModelScope.launch {
-            playbackController.isPlaying.collect { playing ->
-                if (currentImdbId.isNotBlank()) {
-                    val progress = currentProgress()
-                    if (playing) {
-                        runCatching { traktScrobbleService.scrobbleStart(currentImdbId, currentContentType, progress) }
-                    } else {
-                        runCatching { traktScrobbleService.scrobblePause(currentImdbId, currentContentType, progress) }
+            playbackController.isPlaying
+                .debounce(2_000L)
+                .collect { playing ->
+                    if (currentImdbId.isNotBlank()) {
+                        val progress = currentProgress()
+                        if (playing) {
+                            runCatching { traktScrobbleService.scrobbleStart(currentImdbId, currentContentType, progress) }
+                        } else {
+                            runCatching { traktScrobbleService.scrobblePause(currentImdbId, currentContentType, progress) }
+                        }
                     }
                 }
-            }
         }
     }
 
@@ -193,15 +197,17 @@ class PlayerViewModel @Inject constructor(
     }
 
     private fun resumePositionAfterReady() {
-        viewModelScope.launch {
-            streamState.collect { state ->
+        val key = positionKey()   // capture BEFORE any mutation
+        resumeJob?.cancel()
+        resumeJob = viewModelScope.launch {
+            torrentEngine.state.collect { state ->
                 if (state is StreamState.Ready) {
-                    val key = positionKey()
                     val savedPos = playbackPositionStore.getPosition(key)
                     if (savedPos > 30_000L) {
                         playbackController.command.tryEmit(PlaybackCommand.SeekTo(savedPos))
                     }
                     startPositionSaveLoop()
+                    resumeJob = null
                     return@collect
                 }
             }
@@ -310,6 +316,8 @@ class PlayerViewModel @Inject constructor(
 
     fun stopStream() {
         positionSaveJob?.cancel()
+        resumeJob?.cancel()
+        resumeJob = null
         torrentEngine.stopCurrent()
         context.stopService(Intent(context, TorrentService::class.java))
         castManager.disconnect()
@@ -347,7 +355,10 @@ class PlayerViewModel @Inject constructor(
 
         positionSaveJob?.cancel()
         viewModelScope.launch {
-            playbackPositionStore.clearPosition(positionKey())
+            val completedKey = if ((completedSeason ?: 0) > 0)
+                "pos_${completedImdbId}_s${completedSeason}e${completedEpisode}"
+            else "pos_${completedImdbId}"
+            playbackPositionStore.clearPosition(completedKey)
         }
 
         viewModelScope.launch {
@@ -379,9 +390,6 @@ class PlayerViewModel @Inject constructor(
                 playbackQueue.dequeue()
                 advanceToItem(item)
             }
-        } else {
-            val dequeued = playbackQueue.dequeue()
-            if (dequeued != null) advanceToItem(dequeued)
         }
     }
 
@@ -456,6 +464,7 @@ class PlayerViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         positionSaveJob?.cancel()
+        resumeJob?.cancel()
         countdownJob?.cancel()
         castManager.chromeCaster.unregisterSessionListener()
         castManager.dlnaDiscovery.stopDiscovery()

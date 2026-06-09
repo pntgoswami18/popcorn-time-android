@@ -13,7 +13,9 @@ import com.popcorntime.android.data.remote.RemoteControlTokenStore
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -31,6 +33,7 @@ class TorrentService : Service() {
     @Inject lateinit var torrentPrefsStore: TorrentPrefsStore
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var speedLimitJob: Job? = null
 
     companion object {
         const val CHANNEL_ID = "torrent_stream"
@@ -56,7 +59,8 @@ class TorrentService : Service() {
             val token = tokenStore.getOrCreateToken()
             remoteControlServer.startIfNotRunning(token)
         }
-        serviceScope.launch {
+        speedLimitJob?.cancel()
+        speedLimitJob = serviceScope.launch {
             combine(torrentPrefsStore.maxDownloadKbps, torrentPrefsStore.maxUploadKbps) { dl, ul -> dl to ul }
                 .collect { (dl, ul) -> torrentEngine.applySpeedLimits(dl, ul) }
         }
@@ -68,6 +72,7 @@ class TorrentService : Service() {
     override fun onDestroy() {
         torrentEngine.stopCurrent()
         remoteControlServer.stopIfRunning()
+        serviceScope.cancel()
         super.onDestroy()
     }
 
