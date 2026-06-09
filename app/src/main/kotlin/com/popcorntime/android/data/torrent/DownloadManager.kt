@@ -77,6 +77,9 @@ class DownloadManager @Inject constructor(
                     peers = 0,
                     hash = "",
                 )
+                // Second guard: cancel may have fired between the first check and startStream.
+                // If so, activeDownloadImdbId was already cleared — abort before the engine starts.
+                if (activeDownloadImdbId.get() != imdbId) return@launch
                 torrentEngine.startStream(torrent, saveDir)
                 // Wait for Ready or Error state
                 val finalState = torrentEngine.state.first { it is StreamState.Ready || it is StreamState.Error }
