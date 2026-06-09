@@ -311,6 +311,7 @@ class PlayerViewModel @Inject constructor(
 
     fun stopStream() {
         positionSaveJob?.cancel()
+        positionSaveJob = null
         resumeJob?.cancel()
         resumeJob = null
         countdownJob?.cancel()
@@ -361,7 +362,7 @@ class PlayerViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            val metadata = buildLibraryMetadata(completedImdbId, completedSeason, completedEpisode, completedQuality)
+            val metadata = buildLibraryMetadata(completedImdbId, completedSeason, completedEpisode, completedQuality, completedContentType)
             if (metadata != null) libraryRepository.markWatched(completedImdbId, metadata)
         }
 
@@ -431,9 +432,10 @@ class PlayerViewModel @Inject constructor(
 
     private fun buildLibraryMetadata(
         imdbId: String = currentImdbId,
-        @Suppress("UNUSED_PARAMETER") season: Int? = currentSeason,
-        @Suppress("UNUSED_PARAMETER") episode: Int? = currentEpisode,
-        @Suppress("UNUSED_PARAMETER") quality: String = currentQuality,
+        season: Int? = currentSeason,
+        episode: Int? = currentEpisode,
+        quality: String = currentQuality,
+        contentType: LibraryContentType = currentContentType,
     ): LibraryItem? {
         val movie = MovieCache.get(imdbId)
         if (movie != null) {
@@ -453,7 +455,7 @@ class PlayerViewModel @Inject constructor(
                 title = show.title,
                 posterUrl = show.posterUrl,
                 year = show.year,
-                contentType = currentContentType,
+                contentType = contentType,
                 addedAt = System.currentTimeMillis(),
             )
         }

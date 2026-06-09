@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.util.Collections
 import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -30,6 +31,7 @@ class DownloadManager @Inject constructor(
         .stateIn(scope, SharingStarted.Eagerly, emptyList())
 
     private val activeDownloadImdbId: AtomicReference<String?> = AtomicReference(null)
+    private val inFlightIds = Collections.synchronizedSet(mutableSetOf<String>())
 
     init {
         // Clean up any in-progress rows from a previous session
@@ -40,7 +42,11 @@ class DownloadManager @Inject constructor(
 
     fun startDownload(imdbId: String, title: String, magnetUrl: String) {
         scope.launch {
-            if (downloads.value.any { it.imdbId == imdbId }) return@launch  // already tracked
+            if (!inFlightIds.add(imdbId)) return@launch  // already in-flight
+            if (downloads.value.any { it.imdbId == imdbId }) {
+                inFlightIds.remove(imdbId)
+                return@launch
+            }
             val saveDir = context.getExternalFilesDir("downloads") ?: context.filesDir
             val entity = DownloadEntity(
                 imdbId = imdbId,
@@ -67,6 +73,7 @@ class DownloadManager @Inject constructor(
             if (finalState is StreamState.Error) {
                 downloadDao.delete(imdbId)
                 activeDownloadImdbId.compareAndSet(imdbId, null)
+                inFlightIds.remove(imdbId)
                 return@launch
             }
             // Ready path
@@ -77,7 +84,9 @@ class DownloadManager @Inject constructor(
                     completedAt = System.currentTimeMillis(),
                 )
                 downloadDao.insert(updatedEntity)
+                activeDownloadImdbId.compareAndSet(imdbId, null)
             }
+            inFlightIds.remove(imdbId)
         }
     }
 

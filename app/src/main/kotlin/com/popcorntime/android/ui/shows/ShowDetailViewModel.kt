@@ -15,6 +15,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -63,15 +64,19 @@ class ShowDetailViewModel @Inject constructor(
             val inWatchlist = libraryRepository.isInWatchlist(imdbId)
             val isFavourited = libraryRepository.isFavourited(imdbId)
             val isWatched = libraryRepository.isWatched(imdbId)
+            val watchedIds = libraryRepository.observeWatched().first().map { it.imdbId }.toSet()
             _uiState.update { it.copy(isInWatchlist = inWatchlist, isBookmarked = isFavourited, isWatched = isWatched) }
 
             repository.getShowDetail(imdbId, contentType).fold(
                 onSuccess = { show ->
                     ShowCache.put(show)
                     val seasons = show.seasons()
+                    val epKeys = show.episodes.map { ep -> "${show.imdbId}_s${ep.season}e${ep.episode}" }
+                    val allWatched = epKeys.isNotEmpty() && epKeys.all { it in watchedIds }
                     _uiState.update {
                         it.copy(show = show, seasons = seasons,
-                            selectedSeason = seasons.firstOrNull()?.number ?: 1, isLoading = false)
+                            selectedSeason = seasons.firstOrNull()?.number ?: 1, isLoading = false,
+                            allWatched = allWatched)
                     }
                 },
                 onFailure = { e ->
