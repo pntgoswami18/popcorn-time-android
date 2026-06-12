@@ -134,4 +134,7 @@ dependencies {
 
     // QR codes (remote control pairing)
     implementation(libs.zxing.core)
+
+    // Unit tests
+    testImplementation(libs.junit)
 }

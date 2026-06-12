@@ -8,8 +8,6 @@ import android.content.Intent
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.popcorntime.android.data.preferences.TorrentPrefsStore
-import com.popcorntime.android.data.remote.RemoteControlServer
-import com.popcorntime.android.data.remote.RemoteControlTokenStore
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -28,8 +26,6 @@ import javax.inject.Inject
 class TorrentService : Service() {
 
     @Inject lateinit var torrentEngine: TorrentEngine
-    @Inject lateinit var remoteControlServer: RemoteControlServer
-    @Inject lateinit var tokenStore: RemoteControlTokenStore
     @Inject lateinit var torrentPrefsStore: TorrentPrefsStore
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -55,10 +51,10 @@ class TorrentService : Service() {
             return START_NOT_STICKY
         }
         startForeground(NOTIFICATION_ID, buildNotification("Streaming…"))
-        serviceScope.launch {
-            val token = tokenStore.getOrCreateToken()
-            remoteControlServer.startIfNotRunning(token)
-        }
+        // Note: this service deliberately does NOT touch the remote control
+        // server. Its lifecycle is owned solely by RemoteControlServerController,
+        // driven by the user's settings toggle (privacy: the API must never run
+        // unless explicitly enabled).
         speedLimitJob?.cancel()
         speedLimitJob = serviceScope.launch {
             combine(torrentPrefsStore.maxDownloadKbps, torrentPrefsStore.maxUploadKbps) { dl, ul -> dl to ul }
@@ -70,7 +66,6 @@ class TorrentService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        remoteControlServer.stopIfRunning()
         torrentEngine.release()
         serviceScope.cancel()
         super.onDestroy()

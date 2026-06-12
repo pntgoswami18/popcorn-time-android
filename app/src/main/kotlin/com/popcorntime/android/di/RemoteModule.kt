@@ -4,6 +4,10 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
+import android.os.SystemClock
+import com.popcorntime.android.data.remote.PairingManager
+import com.popcorntime.android.data.remote.RemoteControlServer
+import com.popcorntime.android.data.remote.RemoteControlServerController
 import com.popcorntime.android.data.remote.RemoteControlTokenStore
 import dagger.Module
 import dagger.Provides
@@ -30,6 +34,26 @@ object RemoteModule {
     fun provideRemoteControlTokenStore(
         @Named("remoteDataStore") dataStore: DataStore<Preferences>,
     ): RemoteControlTokenStore = RemoteControlTokenStore(dataStore)
+
+    @Provides
+    @Singleton
+    fun providePairingManager(tokenStore: RemoteControlTokenStore): PairingManager =
+        PairingManager(
+            clock = { SystemClock.elapsedRealtime() },
+            issueToken = { tokenStore.issueSessionToken() },
+        )
+
+    @Provides
+    @Singleton
+    fun provideRemoteControlServerController(
+        tokenStore: RemoteControlTokenStore,
+        server: RemoteControlServer,
+    ): RemoteControlServerController = RemoteControlServerController(
+        enabled = tokenStore.observeEnabled(),
+        getToken = { tokenStore.getOrCreateToken() },
+        startServer = { token -> server.startIfNotRunning(token) },
+        stopServer = { server.stopIfRunning() },
+    )
 
     // PlaybackController, PlaybackQueue, RemoteControlServer are @Singleton @Inject constructor — no @Provides needed
 }

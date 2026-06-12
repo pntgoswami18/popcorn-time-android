@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Popcorn Time Remote</title>
+<style>
+  :root {
+    --bg: #14141c;
+    --surface: #1f1f2b;
+    --surface-2: #2a2a3a;
+    --text: #f2f2f7;
+    --text-dim: #9a9aac;
+    --accent: #4f9cf7;
+    --danger: #e5564f;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    justify-content: center;
+    padding: 16px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  main { width: 100%; max-width: 480px; }
+  h1 {
+    font-size: 1.2rem;
+    font-weight: 600;
+    text-align: center;
+    margin: 8px 0 16px;
+  }
+  .card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  .card h2 {
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+  }
+  .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 4px 0;
+    gap: 12px;
+  }
+  .row .label { color: var(--text-dim); font-size: 0.9rem; }
+  .row .value { font-variant-numeric: tabular-nums; font-size: 0.95rem; text-align: right; }
+  .pill {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    background: var(--surface-2);
+    color: var(--text-dim);
+  }
+  .pill.playing { background: #1f4d2e; color: #7fe09a; }
+  .pill.paused { background: #4d3a1f; color: #e0bd7f; }
+  .controls { display: flex; gap: 10px; }
+  button {
+    font: inherit;
+    border: none;
+    border-radius: var(--radius);
+    padding: 14px 0;
+    flex: 1;
+    font-size: 1rem;
+    font-weight: 600;
+    background: var(--surface-2);
+    color: var(--text);
+    cursor: pointer;
+    transition: filter 0.1s ease;
+  }
+  button:active { filter: brightness(1.25); }
+  button.primary { background: var(--accent); color: #fff; }
+  button.danger-outline {
+    background: transparent;
+    border: 1px solid var(--danger);
+    color: var(--danger);
+    font-weight: 500;
+    font-size: 0.9rem;
+    padding: 10px 0;
+  }
+  button:disabled { opacity: 0.4; cursor: default; }
+  input[type=range] {
+    width: 100%;
+    accent-color: var(--accent);
+    margin: 10px 0 6px;
+    height: 28px;
+  }
+  .time-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
+  }
+  ul#queueList { list-style: none; }
+  ul#queueList li {
+    background: var(--surface-2);
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+    overflow-wrap: anywhere;
+  }
+  .empty { color: var(--text-dim); font-size: 0.9rem; padding: 4px 0 10px; }
+  .hidden { display: none !important; }
+  .banner {
+    background: var(--surface);
+    border: 1px solid var(--danger);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  .banner h2 { color: var(--danger); font-size: 1rem; margin-bottom: 8px; }
+  .banner p { color: var(--text-dim); font-size: 0.9rem; margin-bottom: 12px; line-height: 1.4; }
+  .banner input[type=text], .text-input {
+    width: 100%;
+    font: inherit;
+    font-size: 0.9rem;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid var(--surface-2);
+    background: var(--bg);
+    color: var(--text);
+    margin-bottom: 10px;
+  }
+  .offline-note {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    padding: 6px 0;
+    min-height: 1.4em;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Popcorn Time Remote</h1>
+
+  <!-- Pairing screen: exchange a short-lived code for a session token -->
+  <section id="pairCard" class="card hidden">
+    <h2>Pair with player</h2>
+    <p id="pairMessage" style="color: var(--text-dim); font-size: 0.9rem; margin-bottom: 12px; line-height: 1.4;">
+      Enter the pairing code shown on the player, give this device a name,
+      then confirm the request on the player.
+    </p>
+    <input type="text" id="pairCodeInput" class="text-input" placeholder="6-digit pairing code" inputmode="numeric" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <input type="text" id="deviceNameInput" class="text-input" placeholder="Device name" value="Web remote" autocomplete="off" spellcheck="false">
+    <button class="primary" id="pairSubmit">Pair</button>
+    <button id="showTokenEntry" style="background: transparent; color: var(--text-dim); font-weight: 500; font-size: 0.85rem; padding: 10px 0; width: 100%; margin-top: 6px;">
+      Have a bearer token? Paste it instead
+    </button>
+  </section>
+
+  <!-- Token problem / manual entry screen -->
+  <section id="authBanner" class="banner hidden">
+    <h2 id="authBannerTitle">Token invalid</h2>
+    <p id="authBannerMessage">
+      This page could not authenticate with the player.
+      Rescan the QR code from the Remote Control settings screen,
+      or paste the bearer token manually below.
+    </p>
+    <input type="text" id="tokenInput" placeholder="Paste bearer token" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <button class="primary" id="tokenSubmit">Connect</button>
+  </section>
+
+  <div id="app" class="hidden">
+    <section class="card">
+      <h2>Now Playing</h2>
+      <div class="row">
+        <span class="label">State</span>
+        <span class="value"><span id="playState" class="pill">&hellip;</span></span>
+      </div>
+      <div class="row">
+        <span class="label">Stream</span>
+        <span class="value" id="streamState">&hellip;</span>
+      </div>
+      <input type="range" id="seekBar" min="0" max="0" value="0" step="1000">
+      <div class="time-row">
+        <span id="posLabel">0:00</span>
+        <span id="durLabel">0:00</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Controls</h2>
+      <div class="controls">
+        <button class="primary" id="btnPlay">&#9654;&#xFE0E; Play</button>
+        <button id="btnPause">&#10073;&#10073; Pause</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Queue</h2>
+      <ul id="queueList"></ul>
+      <div id="queueEmpty" class="empty">Queue is empty.</div>
+      <button class="danger-outline" id="btnClearQueue">Clear queue</button>
+    </section>
+
+    <div class="offline-note" id="connNote"></div>
+  </div>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  var TOKEN_KEY = 'pt_remote_token';
+  var POLL_MS = 2000;
+  var pollTimer = null;
+  var seeking = false;
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  // --- Token bootstrap -----------------------------------------------------
+  // The pairing QR encodes https://<ip>:<port>/#code=<code>&fp=<fingerprint>
+  // — a short-lived 6-digit pairing code that is exchanged for a session
+  // token via POST /pair once the user confirms on the player. The
+  // legacy/advanced path (#token=<token>) still works for manually shared
+  // bearer tokens. Either way, the fragment is never sent to the server; we
+  // read it once and strip it from the address bar.
+  //
+  // fp is the SHA-256 fingerprint of the player's self-signed TLS
+  // certificate. The browser enforces its own TLS trust model — the user
+  // accepts a one-time warning for the self-signed certificate before this
+  // page even loads, and pages cannot pin certificates for fetch(). So the
+  // fingerprint is surfaced for manual verification, not used
+  // programmatically. All requests stay same-origin, so there is no
+  // mixed-content issue.
+  var scannedCode = null;
+  var certFingerprint = null;
+
+  function bootstrapFromFragment() {
+    if (!location.hash || location.hash.length < 2) return;
+    var params;
+    try {
+      params = new URLSearchParams(location.hash.slice(1));
+    } catch (e) {
+      return;
+    }
+    var token = params.get('token');
+    var code = params.get('code');
+    certFingerprint = params.get('fp');
+    if (token) {
+      sessionStorage.setItem(TOKEN_KEY, token);
+    } else if (code) {
+      scannedCode = code;
+    }
+    history.replaceState(null, '', location.pathname);
+  }
+
+  function getToken() { return sessionStorage.getItem(TOKEN_KEY) || ''; }
+
+  function api(path, options) {
+    options = options || {};
+    options.headers = options.headers || {};
+    options.headers['Authorization'] = 'Bearer ' + getToken();
+    return fetch(path, options).then(function (res) {
+      if (res.status === 401) {
+        sessionStorage.removeItem(TOKEN_KEY);
+        showAuthBanner(
+          'Token invalid',
+          'The player rejected this token — it may have been regenerated. Rescan the QR code from the Remote Control settings screen, or paste the current bearer token below.'
+        );
+        throw new Error('unauthorized');
+      }
+      return res;
+    });
+  }
+
+  // --- UI state ------------------------------------------------------------
+  function showAuthBanner(title, message) {
+    stopPolling();
+    stopPairPolling();
+    $('authBannerTitle').textContent = title;
+    $('authBannerMessage').textContent = message;
+    $('authBanner').classList.remove('hidden');
+    $('pairCard').classList.add('hidden');
+    $('app').classList.add('hidden');
+  }
+
+  function showPairCard(message) {
+    stopPolling();
+    var text = message ||
+      'Enter the pairing code shown on the player, give this device a name, then confirm the request on the player.';
+    if (certFingerprint) {
+      text += ' This connection uses the player’s self-signed certificate; if your browser showed a security warning, verify the certificate fingerprint matches ' + certFingerprint + ' before accepting.';
+    }
+    $('pairMessage').textContent = text;
+    $('pairCard').classList.remove('hidden');
+    $('authBanner').classList.add('hidden');
+    $('app').classList.add('hidden');
+    $('pairSubmit').disabled = false;
+  }
+
+  function showApp() {
+    stopPairPolling();
+    $('authBanner').classList.add('hidden');
+    $('pairCard').classList.add('hidden');
+    $('app').classList.remove('hidden');
+    startPolling();
+  }
+
+  // --- Pairing -------------------------------------------------------------
+  var PAIR_POLL_MS = 1500;
+  var pairPollTimer = null;
+
+  function stopPairPolling() {
+    if (pairPollTimer !== null) {
+      clearInterval(pairPollTimer);
+      pairPollTimer = null;
+    }
+  }
+
+  function startPairing() {
+    var code = $('pairCodeInput').value.trim();
+    if (!code) return;
+    var clientName = $('deviceNameInput').value.trim() || 'Web remote';
+    $('pairSubmit').disabled = true;
+    $('pairMessage').textContent = 'Sending pairing request…';
+    fetch('/pair', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: code, clientName: clientName })
+    }).then(function (res) {
+      if (res.status === 202) {
+        return res.json().then(function (data) { pollPairStatus(data.pairingId); });
+      }
+      $('pairSubmit').disabled = false;
+      if (res.status === 401) {
+        $('pairMessage').textContent = 'Wrong code. Check the code on the player and try again.';
+      } else if (res.status === 410) {
+        $('pairMessage').textContent = 'No active pairing, or the code expired. Tap "Pair a new device" on the player and rescan the QR code.';
+      } else if (res.status === 409) {
+        $('pairMessage').textContent = 'Another device is already waiting for confirmation. Try again in a moment.';
+      } else if (res.status === 429) {
+        $('pairMessage').textContent = 'Too many attempts. Wait a minute and try again.';
+      } else {
+        $('pairMessage').textContent = 'Pairing failed (' + res.status + '). Try again.';
+      }
+    }).catch(function () {
+      $('pairSubmit').disabled = false;
+      $('pairMessage').textContent = 'Player unreachable. Make sure you are on the same network and try again.';
+    });
+  }
+
+  function pollPairStatus(pairingId) {
+    $('pairMessage').textContent = 'Waiting for confirmation on your phone…';
+    stopPairPolling();
+    var check = function () {
+      fetch('/pair/status?pairingId=' + encodeURIComponent(pairingId))
+        .then(function (res) {
+          if (res.status === 200) {
+            return res.json().then(function (data) {
+              if (data.status === 'confirmed' && data.token) {
+                stopPairPolling();
+                sessionStorage.setItem(TOKEN_KEY, data.token);
+                showApp();
+              }
+              // 'pending': keep polling.
+            });
+          }
+          stopPairPolling();
+          $('pairSubmit').disabled = false;
+          if (res.status === 403) {
+            $('pairMessage').textContent = 'Pairing was denied on the player.';
+          } else {
+            $('pairMessage').textContent = 'The pairing request expired. Tap "Pair a new device" on the player and rescan the QR code.';
+          }
+        })
+        .catch(function () {
+          // Transient network error: keep polling.
+        });
+    };
+    check();
+    pairPollTimer = setInterval(check, PAIR_POLL_MS);
+  }
+
+  function formatTime(ms) {
+    if (!isFinite(ms) || ms < 0) ms = 0;
+    var totalSec = Math.floor(ms / 1000);
+    var h = Math.floor(totalSec / 3600);
+    var m = Math.floor((totalSec % 3600) / 60);
+    var s = totalSec % 60;
+    var mm = (h > 0 && m < 10 ? '0' : '') + m;
+    var ss = (s < 10 ? '0' : '') + s;
+    return h > 0 ? h + ':' + mm + ':' + ss : m + ':' + ss;
+  }
+
+  function renderStatus(status) {
+    var pill = $('playState');
+    pill.textContent = status.isPlaying ? 'Playing' : 'Paused';
+    pill.className = 'pill ' + (status.isPlaying ? 'playing' : 'paused');
+    $('streamState').textContent = status.streamState || 'Unknown';
+
+    var dur = status.durationMs > 0 ? status.durationMs : 0;
+    var pos = Math.min(status.positionMs || 0, dur || status.positionMs || 0);
+    if (!seeking) {
+      var bar = $('seekBar');
+      bar.max = dur;
+      bar.value = pos;
+      bar.disabled = dur <= 0;
+      $('posLabel').textContent = formatTime(pos);
+      $('durLabel').textContent = formatTime(dur);
+    }
+    renderQueue(status.queue || []);
+    $('connNote').textContent = '';
+  }
+
+  function renderQueue(items) {
+    var list = $('queueList');
+    list.textContent = '';
+    items.forEach(function (item) {
+      var li = document.createElement('li');
+      li.textContent = item.title || item.name || item.id || JSON.stringify(item);
+      list.appendChild(li);
+    });
+    $('queueEmpty').classList.toggle('hidden', items.length > 0);
+    $('btnClearQueue').disabled = items.length === 0;
+  }
+
+  // --- Polling -------------------------------------------------------------
+  function pollStatus() {
+    api('/status')
+      .then(function (res) { return res.json(); })
+      .then(renderStatus)
+      .catch(function (err) {
+        if (err.message !== 'unauthorized') {
+          $('connNote').textContent = 'Player unreachable — retrying…';
+        }
+      });
+  }
+
+  function startPolling() {
+    stopPolling();
+    pollStatus();
+    pollTimer = setInterval(pollStatus, POLL_MS);
+  }
+
+  function stopPolling() {
+    if (pollTimer !== null) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  // --- Actions -------------------------------------------------------------
+  function post(path) {
+    return api(path, { method: 'POST' }).then(pollStatus).catch(function () {});
+  }
+
+  $('btnPlay').addEventListener('click', function () { post('/play'); });
+  $('btnPause').addEventListener('click', function () { post('/pause'); });
+
+  var seekBar = $('seekBar');
+  seekBar.addEventListener('input', function () {
+    seeking = true;
+    $('posLabel').textContent = formatTime(Number(seekBar.value));
+  });
+  seekBar.addEventListener('change', function () {
+    var position = Math.round(Number(seekBar.value));
+    api('/seek?position=' + position, { method: 'POST' })
+      .catch(function () {})
+      .then(function () {
+        seeking = false;
+        pollStatus();
+      });
+  });
+
+  $('btnClearQueue').addEventListener('click', function () {
+    api('/queue/clear', { method: 'DELETE' }).then(pollStatus).catch(function () {});
+  });
+
+  // Manual token entry fallback.
+  function submitManualToken() {
+    var value = $('tokenInput').value.trim();
+    if (!value) return;
+    sessionStorage.setItem(TOKEN_KEY, value);
+    $('tokenInput').value = '';
+    showApp();
+  }
+  $('tokenSubmit').addEventListener('click', submitManualToken);
+  $('tokenInput').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') submitManualToken();
+  });
+
+  $('pairSubmit').addEventListener('click', startPairing);
+  $('pairCodeInput').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') startPairing();
+  });
+  $('showTokenEntry').addEventListener('click', function () {
+    showAuthBanner(
+      'Manual token entry',
+      'Paste the bearer token from the Advanced section of the Remote Control settings screen.'
+    );
+  });
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
+      stopPolling();
+    } else if (!$('app').classList.contains('hidden')) {
+      startPolling();
+    }
+  });
+
+  // --- Boot ----------------------------------------------------------------
+  bootstrapFromFragment();
+  if (getToken()) {
+    showApp();
+  } else if (scannedCode) {
+    // QR scan: prefill the code, ask only for a device name, then pair.
+    $('pairCodeInput').value = scannedCode;
+    showPairCard('Give this device a name, then tap Pair and confirm the request on the player.');
+    $('deviceNameInput').focus();
+  } else {
+    showPairCard();
+  }
+})();
+</script>
+</body>
+</html>

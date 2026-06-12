@@ -203,14 +203,60 @@ https://yts.bz/
 
 ---
 
-## HTTP Remote Control API
+## Remote Control API (HTTPS)
 
 The app exposes a local REST API on port **8889** when enabled (**Library → Remote icon**). Control playback from any script, dashboard, or automation tool on your LAN.
+
+The feature is **off by default** and the toggle is persisted: the server runs if and only if remote control is enabled in settings, including across app restarts. Starting a torrent stream never starts the server on its own.
+
+### TLS: self-signed certificate, trust-on-first-use
+
+The server is **HTTPS-only** — there is no cleartext HTTP listener when the feature is enabled. On first start the app generates an EC key pair in the Android Keystore (the private key never leaves it) with a self-signed certificate valid for 10 years. The certificate is stable across app restarts and token regenerations, so a client that trusted it once keeps working.
+
+Because the certificate is self-signed, clients can't validate it against a CA. Instead, the QR payload carries the certificate's SHA-256 fingerprint (`fp` fragment parameter, format `sha256:<64 hex chars>`) for **trust-on-first-use (TOFU)** pinning. The same fingerprint is shown in the Remote settings screen under **Advanced → Certificate fingerprint**.
+
+- **Browsers** show a one-time "connection not private" warning. Verify the certificate's SHA-256 fingerprint against the one on the settings screen, then accept. Browsers cannot pin a fingerprint from the page itself, so this manual check *is* the TOFU step.
+- **Verify from a terminal:**
+  ```bash
+  openssl s_client -connect 192.168.1.x:8889 </dev/null 2>/dev/null \
+    | openssl x509 -noout -fingerprint -sha256
+  ```
+- **curl / scripts:** the certificate names the device `CN=PopcornTime Remote` with no IP SAN, so `--cacert` alone fails hostname verification. Pin the public key instead — curl enforces `--pinnedpubkey` even together with `-k`:
+  ```bash
+  # one-time: compute the SPKI pin from the live server
+  PIN=$(openssl s_client -connect 192.168.1.x:8889 </dev/null 2>/dev/null \
+    | openssl x509 -pubkey -noout \
+    | openssl pkey -pubin -outform der \
+    | openssl dgst -sha256 -binary | base64)
+  curl -k --pinnedpubkey "sha256//$PIN" https://192.168.1.x:8889/status ...
+  ```
+  Plain `curl -k` without a pin skips verification entirely — it protects against passive eavesdropping only, not an active man-in-the-middle.
+
+Security notes: TLS protects tokens and pairing codes from passive sniffing on the LAN. Protection against an *active* MITM depends on the client actually verifying the fingerprint (TOFU); a client that blindly accepts any certificate gets encryption but not server authentication. After an app uninstall/reinstall the keystore entry is recreated, so clients must re-verify and re-trust the new certificate.
+
+### Remote control web page
+
+The server also serves a built-in remote control web UI at `GET /` (and `/index.html`) — these two routes are **unauthenticated** so a browser can load the page; every API route still requires the bearer token.
+
+The QR code shown while pairing encodes a plain URL carrying a short-lived pairing code and the TLS certificate fingerprint:
+
+```
+https://<ip>:8889/#code=<pairing-code>&fp=sha256:<hex>
+```
+
+Scan it with a phone camera to open the remote page in a browser (accept the self-signed-certificate warning on first connect — ideally after checking the fingerprint). The code and fingerprint ride in the URL fragment (never sent over the network to the server); the page exchanges the code for a session token via `POST /pair` after you approve the device on the phone, stores the token in `sessionStorage`, and sends it as `Authorization: Bearer <token>` on every API call. The manual/advanced form `https://<ip>:8889/#token=<token>` is still supported for persistent bearer tokens.
+
+> **Breaking change (TLS):** the API moved from `http://` to `https://` — cleartext connections are refused. Re-scan the QR code (it now uses the `https` scheme and includes the `fp` fingerprint parameter) and accept the browser warning once. Scripts must point at `https://` and pin or trust the device certificate as described above.
+>
+> **Breaking change (older):** the QR code previously encoded a JSON object (`{"ip":...,"port":...,"token":...}`). Clients that parsed that JSON must now parse the URL above instead.
+
+### API
 
 Authentication: `Authorization: Bearer <token>` — token is shown in the Remote settings screen.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| `GET` | `/` | Remote control web page (no auth) |
 | `GET` | `/status` | Playback state, position, duration, queue |
 | `POST` | `/play` | Resume playback |
 | `POST` | `/pause` | Pause playback |
@@ -222,8 +268,9 @@ Authentication: `Authorization: Bearer <token>` — token is shown in the Remote
 Example:
 ```bash
 TOKEN="your-token-here"
-curl -H "Authorization: Bearer $TOKEN" http://192.168.1.x:8889/status
-curl -X POST -H "Authorization: Bearer $TOKEN" http://192.168.1.x:8889/pause
+# PIN computed once via openssl (see TLS section above)
+curl -k --pinnedpubkey "sha256//$PIN" -H "Authorization: Bearer $TOKEN" https://192.168.1.x:8889/status
+curl -k --pinnedpubkey "sha256//$PIN" -X POST -H "Authorization: Bearer $TOKEN" https://192.168.1.x:8889/pause
 ```
 
 ---
