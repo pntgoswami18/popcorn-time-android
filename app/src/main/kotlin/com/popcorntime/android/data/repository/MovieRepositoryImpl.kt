@@ -2,8 +2,8 @@ package com.popcorntime.android.data.repository
 
 import com.popcorntime.android.data.api.JackettApiService
 import com.popcorntime.android.data.api.MovieApiService
-import com.popcorntime.android.data.api.dto.YtsMovieDto
-import com.popcorntime.android.data.api.dto.YtsTorrentDto
+import com.popcorntime.android.data.api.applyClientSideFilters
+import com.popcorntime.android.data.api.toDomain
 import com.popcorntime.android.data.api.toMovieTorrent
 import com.popcorntime.android.data.db.dao.BookmarkedDao
 import com.popcorntime.android.data.db.dao.WatchedDao
@@ -61,14 +61,16 @@ class MovieRepositoryImpl @Inject constructor(
                 }
             }
         }
-        // Fall through to YTS
-        val response = api.listMovies(filter)
-        response.data.movies.orEmpty().map { it.toDomain() }
+        // Fall through to the Butter / popcorn-ru mirrors (same servers popcorn-desktop uses).
+        // quality / minimumRating have no server-side equivalent → filtered client-side.
+        api.listMovies(filter)
+            .map { it.toDomain() }
+            .applyClientSideFilters(filter.quality, filter.minimumRating)
     }
 
     override suspend fun getMovieDetail(imdbId: String): Result<Movie> {
         if (imdbId.startsWith("jackett:")) {
-            // Jackett-sourced movies don't have a YTS counterpart
+            // Jackett-sourced movies don't have a Butter counterpart
             return Result.failure(UnsupportedOperationException("Jackett movie detail not available"))
         }
         return safeRunCatching {
@@ -108,50 +110,7 @@ private inline fun <T> safeRunCatching(block: () -> T): Result<T> =
     }
 
 // ── Mappers ──────────────────────────────────────────────────────────────────
-
-private fun YtsMovieDto.toDomain() = Movie(
-    id = id,
-    imdbId = imdbCode,
-    title = titleEnglish.ifBlank { title },
-    year = year,
-    rating = rating,
-    runtime = runtime,
-    genres = genres.orEmpty(),
-    synopsis = descriptionFull.ifBlank { synopsis.ifBlank { summary } },
-    posterUrl = largeCoverImage,
-    coverUrl = mediumCoverImage,
-    backdropUrl = backgroundImageOriginal.ifBlank { backgroundImage },
-    trailerUrl = if (ytTrailerCode.isNotBlank()) "https://www.youtube.com/watch?v=$ytTrailerCode" else null,
-    certification = mpaRating,
-    language = language,
-    torrents = torrents.orEmpty().associate { it.quality to it.toDomain(slug) },
-)
-
-private fun YtsTorrentDto.toDomain(slug: String) = Torrent(
-    url = url,
-    magnet = buildMagnet(hash, slug, quality, type),
-    quality = quality,
-    type = type,
-    size = sizeBytes,
-    fileSize = size,
-    seeds = seeds,
-    peers = peers,
-    hash = hash,
-)
+// Butter DTO → domain mapping lives in data/api/ButterMappers.kt (unit-testable).
 
 private fun String.slugify(): String =
     lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
-
-private fun buildMagnet(hash: String, slug: String, quality: String, type: String): String {
-    val name = slug.split("-").joinToString(".") { it.replaceFirstChar(Char::uppercaseChar) }
-    // Include well-known public trackers so libtorrent can find peers even before DHT resolves.
-    val trackers = listOf(
-        "udp://tracker.opentrackr.org:1337/announce",
-        "udp://open.stealth.si:80/announce",
-        "udp://tracker.torrent.eu.org:451/announce",
-        "udp://tracker.dler.org:6969/announce",
-        "udp://open.tracker.cl:1337/announce",
-    )
-    val trParams = trackers.joinToString("") { "&tr=$it" }
-    return "magnet:?xt=urn:btih:$hash&dn=$name.$quality.$type-YTS$trParams"
-}

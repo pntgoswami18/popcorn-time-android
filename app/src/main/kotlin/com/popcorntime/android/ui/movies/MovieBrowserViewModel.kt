@@ -124,7 +124,9 @@ class MovieBrowserViewModel @Inject constructor(
                             isLoading = false,
                             isLoadingMore = false,
                             currentPage = page,
-                            hasMore = newMovies.size >= 20,
+                            // Butter returns ~50/page but client-side quality/rating filters
+                            // can shrink a page; only an empty page means the end.
+                            hasMore = newMovies.isNotEmpty(),
                             filter = filter,
                         )
                     }

@@ -64,7 +64,9 @@ fun SourceSettingsScreen(
                             onClick = { viewModel.setMovieSource(source) },
                         )
                         Text(
-                            text = source.name,
+                            // YTS is the legacy enum name (persisted in prefs); the default
+                            // source now talks to the Popcorn Time (Butter) mirror servers.
+                            text = if (source == TorrentSource.YTS) "Popcorn Time (default)" else source.name,
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(start = 8.dp),
                         )
