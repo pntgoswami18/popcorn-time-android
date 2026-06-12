@@ -22,12 +22,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.popcorntime.android.domain.model.LibraryContentType
 import com.popcorntime.android.domain.model.LibraryItem
+import com.popcorntime.android.ui.settings.DownloadsTabContent
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(
     onItemClick: (imdbId: String, contentType: LibraryContentType) -> Unit,
     onSettings: () -> Unit,
+    onPlayDownload: (localUri: String) -> Unit = {},
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -65,8 +67,13 @@ fun LibraryScreen(
         Column(modifier = Modifier
             .padding(padding)
             .fillMaxSize()) {
-            val tabs = listOf(LibraryTab.FAVOURITES, LibraryTab.WATCHLIST, LibraryTab.WATCHED)
-            val tabLabels = listOf("Favourites", "Watchlist", "Watched")
+            val tabs = listOf(
+                LibraryTab.FAVOURITES,
+                LibraryTab.WATCHLIST,
+                LibraryTab.WATCHED,
+                LibraryTab.DOWNLOADS,
+            )
+            val tabLabels = listOf("Favourites", "Watchlist", "Watched", "Downloads")
             TabRow(
                 selectedTabIndex = tabs.indexOf(state.selectedTab),
                 containerColor = MaterialTheme.colorScheme.background,
@@ -81,37 +88,49 @@ fun LibraryScreen(
                 }
             }
 
-            val items = when (state.selectedTab) {
-                LibraryTab.FAVOURITES -> state.favourites
-                LibraryTab.WATCHLIST -> state.watchlist
-                LibraryTab.WATCHED -> state.watched
-            }
-
-            if (items.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = when (state.selectedTab) {
-                            LibraryTab.FAVOURITES -> "No favourites yet"
-                            LibraryTab.WATCHLIST -> "Your watchlist is empty"
-                            LibraryTab.WATCHED -> "Nothing watched yet"
-                        },
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+            when (state.selectedTab) {
+                LibraryTab.DOWNLOADS -> {
+                    DownloadsTabContent(
+                        onPlayDownload = onPlayDownload,
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
-            } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 120.dp),
-                    contentPadding = PaddingValues(12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    items(items, key = { it.imdbId }) { item ->
-                        LibraryItemCard(
-                            item = item,
-                            onClick = { onItemClick(item.imdbId, item.contentType) },
-                        )
+                else -> {
+                    val items = when (state.selectedTab) {
+                        LibraryTab.FAVOURITES -> state.favourites
+                        LibraryTab.WATCHLIST -> state.watchlist
+                        LibraryTab.WATCHED -> state.watched
+                        LibraryTab.DOWNLOADS -> emptyList()
+                    }
+
+                    if (items.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(
+                                text = when (state.selectedTab) {
+                                    LibraryTab.FAVOURITES -> "No favourites yet"
+                                    LibraryTab.WATCHLIST -> "Your watchlist is empty"
+                                    LibraryTab.WATCHED -> "Nothing watched yet"
+                                    LibraryTab.DOWNLOADS -> "No downloads yet"
+                                },
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    } else {
+                        LazyVerticalGrid(
+                            columns = GridCells.Adaptive(minSize = 120.dp),
+                            contentPadding = PaddingValues(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxSize(),
+                        ) {
+                            items(items, key = { it.imdbId }) { item ->
+                                LibraryItemCard(
+                                    item = item,
+                                    onClick = { onItemClick(item.imdbId, item.contentType) },
+                                )
+                            }
+                        }
                     }
                 }
             }

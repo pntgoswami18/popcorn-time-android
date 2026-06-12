@@ -1,12 +1,12 @@
 package com.popcorntime.android.ui.settings
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,6 +25,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import java.io.File
 import javax.inject.Inject
+
+private val VIDEO_EXTENSIONS = setOf("mp4", "mkv", "avi", "mov", "webm", "m4v", "wmv", "flv")
 
 @HiltViewModel
 class DownloadsViewModel @Inject constructor(
@@ -45,9 +47,6 @@ fun DownloadsScreen(
     onPlayDownload: (localUri: String) -> Unit = {},
     viewModel: DownloadsViewModel = hiltViewModel(),
 ) {
-    val downloads by viewModel.downloads.collectAsStateWithLifecycle()
-    val activeStats by viewModel.activeDownloadStats.collectAsStateWithLifecycle()
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -63,37 +62,49 @@ fun DownloadsScreen(
             )
         },
     ) { padding ->
-        if (downloads.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    "No downloads yet",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+        DownloadsTabContent(
+            onPlayDownload = onPlayDownload,
+            modifier = Modifier.padding(padding),
+            viewModel = viewModel,
+        )
+    }
+}
+
+@Composable
+fun DownloadsTabContent(
+    onPlayDownload: (localUri: String) -> Unit,
+    modifier: Modifier = Modifier,
+    viewModel: DownloadsViewModel = hiltViewModel(),
+) {
+    val downloads by viewModel.downloads.collectAsStateWithLifecycle()
+    val activeStats by viewModel.activeDownloadStats.collectAsStateWithLifecycle()
+
+    if (downloads.isEmpty()) {
+        Box(
+            modifier = modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                "No downloads yet",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    } else {
+        LazyColumn(
+            modifier = modifier.fillMaxSize(),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(downloads, key = { it.imdbId }) { download ->
+                DownloadItem(
+                    download = download,
+                    activeStats = activeStats?.takeIf { it.imdbId == download.imdbId },
+                    onPlay = {
+                        resolvePlayableVideoUri(download.filePath)?.let(onPlayDownload)
+                    },
+                    onDelete = { viewModel.deleteDownload(download.imdbId) },
                 )
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(downloads, key = { it.imdbId }) { download ->
-                    DownloadItem(
-                        download = download,
-                        activeStats = activeStats?.takeIf { it.imdbId == download.imdbId },
-                        onPlay = {
-                            downloadPlayableUri(download.filePath)?.let(onPlayDownload)
-                        },
-                        onDelete = { viewModel.deleteDownload(download.imdbId) },
-                    )
-                }
             }
         }
     }
@@ -106,18 +117,9 @@ private fun DownloadItem(
     onPlay: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    val isPlayable = isDownloadPlayable(download)
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(
-                if (isPlayable) {
-                    Modifier.clickable(onClick = onPlay)
-                } else {
-                    Modifier
-                },
-            ),
-    ) {
+    val isCompleted = download.completedAt != null
+    val isPlayable = isCompleted && resolvePlayableVideoUri(download.filePath) != null
+    Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -144,12 +146,33 @@ private fun DownloadItem(
                         )
                     }
                 }
-                IconButton(onClick = onDelete) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete",
-                        tint = MaterialTheme.colorScheme.error)
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (isCompleted) {
+                        IconButton(
+                            onClick = onPlay,
+                            enabled = isPlayable,
+                        ) {
+                            Icon(
+                                Icons.Default.PlayArrow,
+                                contentDescription = "Play",
+                                tint = if (isPlayable) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                            )
+                        }
+                    }
+                    IconButton(onClick = onDelete) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "Delete",
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    }
                 }
             }
-            if (download.completedAt != null) {
+            if (isCompleted) {
                 Text(
                     "Completed",
                     style = MaterialTheme.typography.bodySmall,
@@ -184,16 +207,20 @@ private fun DownloadItem(
     }
 }
 
-private fun isDownloadPlayable(download: DownloadEntity): Boolean {
-    if (download.completedAt == null || download.filePath.isNullOrBlank()) return false
-    val file = File(download.filePath)
-    return file.isFile && file.length() > 0L
-}
-
-private fun downloadPlayableUri(filePath: String?): String? {
+internal fun resolvePlayableVideoUri(filePath: String?): String? {
     if (filePath.isNullOrBlank()) return null
     if (filePath.startsWith("content://") || filePath.startsWith("file://")) {
         return filePath
     }
-    return File(filePath).toURI().toString()
+    val file = File(filePath)
+    if (file.isFile && file.length() > 0L) {
+        return file.toURI().toString()
+    }
+    if (file.isDirectory) {
+        val videoFile = file.walkTopDown()
+            .filter { it.isFile && it.extension.lowercase() in VIDEO_EXTENSIONS && it.length() > 0L }
+            .maxByOrNull { it.length() }
+        return videoFile?.toURI()?.toString()
+    }
+    return null
 }

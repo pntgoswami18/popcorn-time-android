@@ -8,7 +8,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ClosedCaption
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.SettingsRemote
 import androidx.compose.material.icons.filled.Storage
@@ -35,7 +34,6 @@ fun SettingsScreen(
     onSubtitleSettings: () -> Unit,
     onRemoteSettings: () -> Unit,
     onTraktSettings: () -> Unit,
-    onDownloadsSettings: () -> Unit,
 ) {
     val items = listOf(
         SettingsItem("Appearance", Icons.Default.Palette, onAppearanceSettings),
@@ -44,7 +42,6 @@ fun SettingsScreen(
         SettingsItem("OpenSubtitles", Icons.Default.ClosedCaption, onSubtitleSettings),
         SettingsItem("Remote Control", Icons.Default.SettingsRemote, onRemoteSettings),
         SettingsItem("Trakt.tv", Icons.Default.SyncAlt, onTraktSettings),
-        SettingsItem("Downloads", Icons.Default.Download, onDownloadsSettings),
     )
 
     Scaffold(

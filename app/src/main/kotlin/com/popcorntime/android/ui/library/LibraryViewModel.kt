@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-enum class LibraryTab { FAVOURITES, WATCHLIST, WATCHED }
+enum class LibraryTab { FAVOURITES, WATCHLIST, WATCHED, DOWNLOADS }
 
 data class LibraryUiState(
     val favourites: List<LibraryItem> = emptyList(),

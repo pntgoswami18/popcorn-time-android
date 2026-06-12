@@ -30,7 +30,6 @@ import com.popcorntime.android.ui.movies.MovieBrowserScreen
 import com.popcorntime.android.ui.movies.MovieDetailScreen
 import com.popcorntime.android.ui.player.PlayerScreen
 import com.popcorntime.android.ui.settings.AppearanceSettingsScreen
-import com.popcorntime.android.ui.settings.DownloadsScreen
 import com.popcorntime.android.ui.settings.RemoteSettingsScreen
 import com.popcorntime.android.ui.settings.SourceSettingsScreen
 import com.popcorntime.android.ui.settings.SubtitleSettingsScreen
@@ -219,6 +218,9 @@ private fun MainNavHost(navController: NavHostController, modifier: Modifier = M
                     }
                 },
                 onSettings = { navController.navigate("settings") },
+                onPlayDownload = { uri ->
+                    navController.navigate("player_local/${Uri.encode(uri)}")
+                },
             )
         }
         composable("settings") {
@@ -230,7 +232,6 @@ private fun MainNavHost(navController: NavHostController, modifier: Modifier = M
                 onSubtitleSettings = { navController.navigate("settings/subtitles") },
                 onRemoteSettings = { navController.navigate("settings/remote") },
                 onTraktSettings = { navController.navigate("settings/trakt") },
-                onDownloadsSettings = { navController.navigate("settings/downloads") },
             )
         }
         composable("settings/trakt") {
@@ -251,15 +252,6 @@ private fun MainNavHost(navController: NavHostController, modifier: Modifier = M
         composable("settings/torrent") {
             TorrentSettingsScreen(onBack = { navController.popBackStack() })
         }
-        composable("settings/downloads") {
-            DownloadsScreen(
-                onBack = { navController.popBackStack() },
-                onPlayDownload = { uri ->
-                    navController.navigate("player_local/${Uri.encode(uri)}")
-                },
-            )
-        }
-
         // ── Files tab ─────────────────────────────────────────────────────────
         composable(Tab.Files.route) {
             LocalFilesScreen(
