@@ -26,6 +26,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.popcorntime.android.domain.model.Movie
+import com.popcorntime.android.ui.settings.formatDownloadStatsLabel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,6 +34,7 @@ fun MovieDetailScreen(
     imdbId: String,
     onBack: () -> Unit,
     onPlayClick: (quality: String) -> Unit,
+    onPlayDownload: (localUri: String) -> Unit = {},
     viewModel: MovieDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -41,6 +43,14 @@ fun MovieDetailScreen(
     LaunchedEffect(imdbId) { viewModel.loadMovie(imdbId) }
 
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // One-shot messages (e.g. "Another download is already in progress").
+    LaunchedEffect(state.transientMessage) {
+        state.transientMessage?.let { message ->
+            snackbarHostState.showSnackbar(message)
+            viewModel.consumeTransientMessage()
+        }
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -99,11 +109,17 @@ fun MovieDetailScreen(
                 onQualitySelect = viewModel::selectQuality,
                 onPlayClick = { onPlayClick(state.selectedQuality) },
                 onTrailerClick = { url ->
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                    val uri = Uri.parse(url)
+                    if (uri.scheme == "https" || uri.scheme == "http") {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                    }
                 },
                 onDownloadClick = { torrent ->
                     viewModel.startDownload(torrent)
                 },
+                downloadState = state.downloadState,
+                onCancelDownload = viewModel::cancelDownload,
+                onPlayDownload = onPlayDownload,
             )
         }
     }
@@ -120,6 +136,9 @@ private fun MovieDetailContent(
     onPlayClick: () -> Unit,
     onTrailerClick: (String) -> Unit,
     onDownloadClick: (com.popcorntime.android.domain.model.Torrent) -> Unit = {},
+    downloadState: MovieDownloadState = MovieDownloadState.NotDownloaded,
+    onCancelDownload: () -> Unit = {},
+    onPlayDownload: (localUri: String) -> Unit = {},
 ) {
     Column(modifier = modifier.verticalScroll(rememberScrollState())) {
         // Backdrop + poster hero
@@ -203,7 +222,7 @@ private fun MovieDetailContent(
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     movie.torrents.keys.sortedDescending().forEach { quality ->
-                        val torrent = movie.torrents[quality]!!
+                        val torrent = movie.torrents[quality] ?: return@forEach
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -226,16 +245,23 @@ private fun MovieDetailContent(
                                     selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
                                 ),
                             )
-                            IconButton(
-                                onClick = { onDownloadClick(torrent) },
-                                modifier = Modifier.size(32.dp),
-                            ) {
-                                Icon(Icons.Default.Download, contentDescription = "Download $quality",
-                                    modifier = Modifier.size(18.dp))
+                            if (downloadState is MovieDownloadState.NotDownloaded) {
+                                IconButton(
+                                    onClick = { onDownloadClick(torrent) },
+                                    modifier = Modifier.size(32.dp),
+                                ) {
+                                    Icon(Icons.Default.Download, contentDescription = "Download $quality",
+                                        modifier = Modifier.size(18.dp))
+                                }
                             }
                         }
                     }
                 }
+                DownloadStatusRow(
+                    downloadState = downloadState,
+                    onCancelDownload = onCancelDownload,
+                    onPlayDownload = onPlayDownload,
+                )
                 Spacer(Modifier.height(16.dp))
             }
 
@@ -265,6 +291,91 @@ private fun MovieDetailContent(
                 }
             }
             Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun DownloadStatusRow(
+    downloadState: MovieDownloadState,
+    onCancelDownload: () -> Unit,
+    onPlayDownload: (localUri: String) -> Unit,
+) {
+    when (downloadState) {
+        is MovieDownloadState.NotDownloaded -> Unit
+
+        is MovieDownloadState.Downloading -> {
+            Spacer(Modifier.height(12.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    LinearProgressIndicator(
+                        progress = { downloadState.stats.progress },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Downloading ${formatDownloadStatsLabel(downloadState.stats)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = onCancelDownload) {
+                    Icon(Icons.Default.Close, contentDescription = "Cancel download")
+                }
+            }
+        }
+
+        is MovieDownloadState.Starting, is MovieDownloadState.Queued -> {
+            Spacer(Modifier.height(12.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        if (downloadState is MovieDownloadState.Starting) "Starting download…" else "Queued",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = onCancelDownload) {
+                    Icon(Icons.Default.Close, contentDescription = "Cancel download")
+                }
+            }
+        }
+
+        is MovieDownloadState.Downloaded -> {
+            Spacer(Modifier.height(12.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    "Downloaded",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f),
+                )
+                downloadState.localUri?.let { uri ->
+                    TextButton(onClick = { onPlayDownload(uri) }) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null,
+                            modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Play")
+                    }
+                }
+            }
         }
     }
 }

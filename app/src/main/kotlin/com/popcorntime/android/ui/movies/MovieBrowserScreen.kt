@@ -27,7 +27,6 @@ import coil.compose.AsyncImage
 import com.popcorntime.android.domain.model.ALL_GENRES
 import com.popcorntime.android.domain.model.Movie
 import com.popcorntime.android.domain.model.SortOption
-import com.popcorntime.android.ui.movies.MovieCache
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -205,11 +204,16 @@ private fun MovieGrid(
 ) {
     val gridState = rememberLazyGridState()
 
-    // Trigger load-more when near the end
+    // Trigger load-more when near the end; guard against empty list to avoid an immediate loop
     val shouldLoadMore by remember {
         derivedStateOf {
-            val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            lastVisible >= movies.size - 6
+            when {
+                movies.isEmpty() || isLoadingMore -> false
+                else -> {
+                    val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+                    lastVisible >= movies.size - 6
+                }
+            }
         }
     }
     LaunchedEffect(shouldLoadMore) {

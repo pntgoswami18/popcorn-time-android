@@ -36,7 +36,7 @@ object NetworkModule {
             logger = object : Logger {
                 override fun log(message: String) = Timber.tag("Ktor").d(message)
             }
-            level = LogLevel.INFO
+            level = if (com.popcorntime.android.BuildConfig.DEBUG) LogLevel.INFO else LogLevel.NONE
         }
         defaultRequest {
             headers.append("User-Agent", "PopcornTime-Android/1.0")

@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import timber.log.Timber
+import java.io.File
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
@@ -44,6 +46,16 @@ class DownloadManager @Inject constructor(
     private val activeDownloadImdbId: AtomicReference<String?> = AtomicReference(null)
     private val inFlightIds = Collections.synchronizedSet(mutableSetOf<String>())
 
+    /** Set to the download's imdbId right before torrentEngine.startStream is invoked for it,
+     *  cleared when its coroutine finishes. Gates cancelDownload's stopCurrent() so we never
+     *  stop a torrent the engine is running for someone else (e.g. a stream). */
+    private val engineStartedForImdbId: AtomicReference<String?> = AtomicReference(null)
+
+    /** Observable mirror of [activeDownloadImdbId] so the UI can tell which incomplete
+     *  entity is the actively-downloading one even before stats start arriving. */
+    private val _activeImdbId = MutableStateFlow<String?>(null)
+    val activeImdbId: StateFlow<String?> = _activeImdbId.asStateFlow()
+
     private val _activeDownloadStats = MutableStateFlow<DownloadStats?>(null)
     val activeDownloadStats: StateFlow<DownloadStats?> = _activeDownloadStats.asStateFlow()
 
@@ -54,9 +66,21 @@ class DownloadManager @Inject constructor(
         }
     }
 
-    fun startDownload(imdbId: String, title: String, magnetUrl: String, quality: String = "") {
+    /**
+     * Starts downloading [imdbId]. Only ONE download may run at a time: the torrent
+     * engine has a single slot, so a second concurrent download would preempt (and
+     * corrupt the bookkeeping of) the first.
+     *
+     * @return false if another download is already in progress (nothing was started);
+     *   the caller should surface this to the user.
+     */
+    fun startDownload(imdbId: String, title: String, magnetUrl: String, quality: String = ""): Boolean {
+        // Claim the single download slot synchronously so two rapid calls can't both start.
+        synchronized(inFlightIds) {
+            if (inFlightIds.isNotEmpty()) return false // a download is already in progress
+            inFlightIds.add(imdbId)
+        }
         scope.launch {
-            if (!inFlightIds.add(imdbId)) return@launch  // already in-flight
             if (downloads.value.any { it.imdbId == imdbId }) {
                 inFlightIds.remove(imdbId)
                 return@launch
@@ -66,7 +90,10 @@ class DownloadManager @Inject constructor(
                 // compareAndSet can always find it from the moment this try body begins.
                 // The finally block always clears it regardless of how we exit.
                 activeDownloadImdbId.set(imdbId)
-                val saveDir = context.getExternalFilesDir("downloads") ?: context.filesDir
+                _activeImdbId.value = imdbId
+                // Each download gets its own subdirectory so deleting one download can
+                // never touch another download's files (or the shared downloads root).
+                val saveDir = File(downloadsRootDir(), imdbId).also { it.mkdirs() }
                 val entity = DownloadEntity(
                     imdbId = imdbId,
                     title = title,
@@ -75,9 +102,10 @@ class DownloadManager @Inject constructor(
                     filePath = saveDir.absolutePath,
                 )
                 downloadDao.insert(entity)
-                // If cancelDownload fired concurrently it cleared activeDownloadImdbId via CAS
-                // and removed from inFlightIds. Re-check: if we're no longer active, abort.
-                if (activeDownloadImdbId.get() != imdbId) {
+                // If cancelDownload fired concurrently it removed imdbId from inFlightIds
+                // and cleared activeDownloadImdbId via CAS. Re-check both: if we're no
+                // longer active or in-flight, abort.
+                if (imdbId !in inFlightIds || activeDownloadImdbId.get() != imdbId) {
                     downloadDao.delete(imdbId)
                     return@launch
                 }
@@ -92,9 +120,15 @@ class DownloadManager @Inject constructor(
                     peers = 0,
                     hash = "",
                 )
-                // Second guard: cancel may have fired between the first check and startStream.
-                // If so, activeDownloadImdbId was already cleared — abort before the engine starts.
-                if (activeDownloadImdbId.get() != imdbId) return@launch
+                // Mark that the engine is (about to be) running THIS download, then
+                // re-check cancellation one last time: if cancel fired in between, abort
+                // before the engine starts.
+                engineStartedForImdbId.set(imdbId)
+                if (imdbId !in inFlightIds || activeDownloadImdbId.get() != imdbId) {
+                    engineStartedForImdbId.compareAndSet(imdbId, null)
+                    downloadDao.delete(imdbId)
+                    return@launch
+                }
                 torrentEngine.startStream(torrent, saveDir)
                 // Collect live stats while the torrent is downloading
                 val statsJob = launch {
@@ -146,33 +180,50 @@ class DownloadManager @Inject constructor(
                     return@launch
                 }
                 if (finalState is StreamState.Ready) {
-                    val videoFilePath = torrentEngine.getVideoFilePath() ?: saveDir.absolutePath
-                    downloadDao.markComplete(imdbId, videoFilePath, System.currentTimeMillis())
-                    activeDownloadImdbId.compareAndSet(imdbId, null)
+                    // Guard: only mark complete while we're still the active download.
+                    // If we were cancelled/preempted, the engine's file path may belong
+                    // to something else entirely.
+                    if (activeDownloadImdbId.get() == imdbId) {
+                        val videoFilePath = torrentEngine.getVideoFilePath() ?: saveDir.absolutePath
+                        downloadDao.markComplete(imdbId, videoFilePath, System.currentTimeMillis())
+                        activeDownloadImdbId.compareAndSet(imdbId, null)
+                    } else {
+                        // Cancelled while finishing — make sure no zombie row remains.
+                        downloadDao.delete(imdbId)
+                    }
                 }
             } finally {
                 // Always clean up, even if an uncaught exception escapes the try body
                 // (e.g. torrentEngine.startStream throws). Without this, activeDownloadImdbId
-                // would stay set permanently, causing cancelDownload for any subsequent
-                // download to fail its CAS and never call stopCurrent().
+                // would stay set permanently and startDownload would reject every future
+                // download as "already in progress".
                 _activeDownloadStats.value = null
+                engineStartedForImdbId.compareAndSet(imdbId, null)
                 activeDownloadImdbId.compareAndSet(imdbId, null)
+                _activeImdbId.compareAndSet(imdbId, null)
                 inFlightIds.remove(imdbId)
             }
         }
+        return true
     }
 
     fun cancelDownload(imdbId: String) {
-        // Remove from inFlightIds first — acts as a cancellation signal so that a concurrent
-        // startDownload coroutine still between inFlightIds.add and activeDownloadImdbId.set
-        // will detect the cancellation and abort before starting the torrent engine.
+        // Removing from inFlightIds is the cancellation signal: startDownload re-checks
+        // membership at its guard points (after the DB insert and right before
+        // startStream) and aborts if the id is gone.
         inFlightIds.remove(imdbId)
         scope.launch {
             // compareAndSet atomically clears the active-ID only when it still matches,
             // preventing a TOCTOU race where another coroutine changes activeDownloadImdbId
             // between our read and the stopCurrent() call.
             if (activeDownloadImdbId.compareAndSet(imdbId, null)) {
-                torrentEngine.stopCurrent()
+                _activeImdbId.compareAndSet(imdbId, null)
+                // Only stop the engine if startStream was actually invoked for THIS
+                // download — otherwise we'd stop whatever else (e.g. a stream) owns
+                // the single-slot engine.
+                if (engineStartedForImdbId.compareAndSet(imdbId, null)) {
+                    torrentEngine.stopCurrent()
+                }
             }
             downloadDao.delete(imdbId)
         }
@@ -188,11 +239,35 @@ class DownloadManager @Inject constructor(
     fun deleteDownload(imdbId: String) {
         scope.launch {
             val entity = downloads.value.find { it.imdbId == imdbId }
-            entity?.filePath?.let { path ->
-                val f = java.io.File(path)
-                if (f.isDirectory) f.deleteRecursively() else f.delete()
-            }
+            val root = downloadsRootDir()
+            // New layout: every download lives in its own <root>/<imdbId> subdirectory.
+            safeDeleteUnder(root, File(root, imdbId))
+            // Also honour the stored path (completed rows point at the video file; legacy
+            // rows may point elsewhere). safeDeleteUnder refuses anything that is the
+            // shared root itself or escapes it, so old rows that stored the shared root
+            // only lose their DB row — never the other downloads.
+            entity?.filePath?.let { safeDeleteUnder(root, File(it)) }
             downloadDao.delete(imdbId)
         }
+    }
+
+    private fun downloadsRootDir(): File =
+        context.getExternalFilesDir("downloads") ?: context.filesDir
+
+    /** Deletes [target] only if it resolves strictly under [root] (never root itself). */
+    private fun safeDeleteUnder(root: File, target: File) {
+        if (!target.exists()) return
+        val rootCanonical = runCatching { root.canonicalFile }.getOrNull() ?: return
+        val targetCanonical = runCatching { target.canonicalFile }.getOrNull() ?: return
+        if (targetCanonical == rootCanonical ||
+            !targetCanonical.path.startsWith(rootCanonical.path + File.separator)
+        ) {
+            Timber.w(
+                "deleteDownload: refusing to delete %s — not strictly under downloads root %s",
+                targetCanonical, rootCanonical,
+            )
+            return
+        }
+        if (targetCanonical.isDirectory) targetCanonical.deleteRecursively() else targetCanonical.delete()
     }
 }

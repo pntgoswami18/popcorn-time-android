@@ -8,6 +8,7 @@ import com.popcorntime.android.data.network.LanIpResolver
 import com.popcorntime.android.data.remote.PairingManager
 import com.popcorntime.android.data.remote.RemoteControlServer
 import com.popcorntime.android.data.remote.RemoteControlTokenStore
+import com.popcorntime.android.data.remote.SessionTokenInfo
 import com.popcorntime.android.data.remote.RemoteTlsCertificateManager
 import com.popcorntime.android.data.remote.buildPairingUrl
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -15,8 +16,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -129,6 +132,14 @@ class RemoteSettingsViewModel @Inject constructor(
 
     fun denyPairing() {
         pairingManager.deny()
+    }
+
+    /** Paired devices (one session token each), for the Advanced section list. */
+    val pairedDevices: StateFlow<List<SessionTokenInfo>> = tokenStore.observeSessionTokenInfos()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun revokePairedDevice(token: String) {
+        viewModelScope.launch { tokenStore.revokeSessionToken(token) }
     }
 
     fun revokeAllPairedDevices() {

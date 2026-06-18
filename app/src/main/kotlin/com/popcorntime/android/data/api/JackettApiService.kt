@@ -52,6 +52,11 @@ class JackettApiService @Inject constructor(private val client: HttpClient) {
         apiKey: String,
         baseUrl: String,
     ): List<JackettResultDto> {
+        val scheme = try { java.net.URI(baseUrl).scheme?.lowercase() } catch (e: Exception) { null }
+        if (scheme != "http" && scheme != "https") {
+            Timber.w("JackettApiService: rejected invalid base URL scheme for: $baseUrl")
+            return emptyList()
+        }
         return try {
             val url = "${baseUrl.trimEnd('/')}/api/v2.0/indexers/all/results"
             client.get(url) {
@@ -81,8 +86,11 @@ private fun String.detectQuality(): String {
 
 fun JackettResultDto.toMovieTorrent(): Torrent {
     val quality = title.detectQuality()
+    val resolvedUrl = magnetUri.ifBlank {
+        link.takeIf { it.startsWith("magnet:") && extractInfoHash(it).isNotEmpty() } ?: ""
+    }
     return Torrent(
-        url = magnetUri.ifBlank { link },
+        url = resolvedUrl,
         magnet = magnetUri,
         quality = quality,
         type = "web",
@@ -96,7 +104,9 @@ fun JackettResultDto.toMovieTorrent(): Torrent {
 }
 
 fun JackettResultDto.toEpisodeTorrent(): EpisodeTorrent = EpisodeTorrent(
-    url = magnetUri.ifBlank { link },
+    url = magnetUri.ifBlank {
+        link.takeIf { it.startsWith("magnet:") && extractInfoHash(it).isNotEmpty() } ?: ""
+    },
     seeds = seeders,
     peers = peers,
     provider = "Jackett",

@@ -40,7 +40,8 @@ object RemoteModule {
     fun providePairingManager(tokenStore: RemoteControlTokenStore): PairingManager =
         PairingManager(
             clock = { SystemClock.elapsedRealtime() },
-            issueToken = { tokenStore.issueSessionToken() },
+            issueToken = { clientName -> tokenStore.issueSessionToken(clientName) },
+            revokeToken = { token -> tokenStore.revokeSessionToken(token) },
         )
 
     @Provides

@@ -321,8 +321,56 @@ fun RemoteSettingsScreen(
                                     Text("Regenerate")
                                 }
                             }
+                            Text(
+                                "Paired devices",
+                                style = MaterialTheme.typography.labelLarge,
+                            )
+                            val pairedDevices by viewModel.pairedDevices.collectAsStateWithLifecycle()
+                            if (pairedDevices.isEmpty()) {
+                                Text(
+                                    "No paired devices",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            } else {
+                                val dateFormat = remember {
+                                    java.text.SimpleDateFormat("d MMM yyyy", java.util.Locale.getDefault())
+                                }
+                                pairedDevices.forEach { device ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                device.name,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                            )
+                                            Text(
+                                                if (device.issuedAt > 0L) {
+                                                    "Paired ${dateFormat.format(java.util.Date(device.issuedAt))}"
+                                                } else {
+                                                    "Paired earlier"
+                                                },
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                        TextButton(
+                                            onClick = { viewModel.revokePairedDevice(device.token) },
+                                        ) {
+                                            Text(
+                                                "Revoke",
+                                                color = MaterialTheme.colorScheme.error,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                             OutlinedButton(
                                 onClick = viewModel::revokeAllPairedDevices,
+                                enabled = pairedDevices.isNotEmpty(),
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Text("Revoke all paired devices")

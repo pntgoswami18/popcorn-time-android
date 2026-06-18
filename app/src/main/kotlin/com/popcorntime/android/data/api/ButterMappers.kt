@@ -22,9 +22,9 @@ fun ButterMovieDto.toDomain(): Movie = Movie(
         genre.split(" ").joinToString(" ") { word -> word.replaceFirstChar(Char::uppercaseChar) }
     },
     synopsis = synopsis,
-    posterUrl = images?.poster.orEmpty(),
-    coverUrl = images?.poster.orEmpty(),
-    backdropUrl = images?.fanart.orEmpty().ifBlank { images?.banner.orEmpty() },
+    posterUrl = images?.poster.orEmpty().toHttps(),
+    coverUrl = images?.banner.orEmpty().ifBlank { images?.fanart.orEmpty() }.toHttps(),
+    backdropUrl = images?.fanart.orEmpty().ifBlank { images?.banner.orEmpty() }.toHttps(),
     trailerUrl = trailer?.takeIf { it.isNotBlank() },
     certification = certification,
     language = originalLanguage,
@@ -34,15 +34,26 @@ fun ButterMovieDto.toDomain(): Movie = Movie(
 /**
  * Butter torrents are keyed by language then quality. Prefer English torrents,
  * fall back to the first available language; result is quality -> [Torrent].
+ * Entries whose URL is not a valid magnet link are dropped (see [toDomainOrNull]).
  */
 fun ButterMovieDto.flattenTorrents(): Map<String, Torrent> {
     val byLanguage = torrents.orEmpty()
     val chosen = byLanguage["en"] ?: byLanguage.values.firstOrNull() ?: emptyMap()
-    return chosen.entries.associate { (quality, dto) -> quality to dto.toDomain(quality) }
+    return chosen.entries
+        .mapNotNull { (quality, dto) -> dto.toDomainOrNull(quality)?.let { quality to it } }
+        .toMap()
 }
 
-fun ButterTorrentDto.toDomain(qualityKey: String): Torrent {
+/**
+ * Maps a torrent entry to the domain model, validating the URL first: mirrors
+ * are untrusted, so anything that is not a `magnet:` link with a parseable
+ * btih infohash is dropped (returns null) rather than handed to the torrent engine.
+ */
+fun ButterTorrentDto.toDomainOrNull(qualityKey: String): Torrent? {
     val magnet = unescapeHtmlAmpersands(url)
+    if (!magnet.startsWith("magnet:")) return null
+    val infoHash = extractInfoHash(magnet)
+    if (infoHash.isEmpty()) return null
     return Torrent(
         url = magnet,
         magnet = magnet,
@@ -52,16 +63,26 @@ fun ButterTorrentDto.toDomain(qualityKey: String): Torrent {
         fileSize = filesize.orEmpty(),
         seeds = seed,
         peers = peer,
-        hash = extractInfoHash(magnet),
+        hash = infoHash,
         source = TorrentSource.YTS,
     )
 }
 
-/** The mirrors return magnet links with HTML-escaped separators (`&amp;`). */
-fun unescapeHtmlAmpersands(url: String): String = url.replace("&amp;", "&")
+/** The mirrors return magnet links with HTML-escaped separators (`&amp;`), sometimes double-encoded. */
+fun unescapeHtmlAmpersands(url: String): String {
+    var s = url
+    var prev: String
+    do { prev = s; s = s.replace("&amp;", "&") } while (s != prev)
+    return s
+}
+
+/** The Butter API returns image URLs over plain HTTP; coerce to HTTPS so Android's
+ *  network security policy (which blocks cleartext traffic) doesn't silently drop them. */
+fun String.toHttps(): String = if (startsWith("http://")) replaceFirst("http://", "https://") else this
 
 fun extractInfoHash(magnet: String): String =
-    Regex("btih:([A-Fa-f0-9]{40})").find(magnet)?.groupValues?.get(1)?.uppercase().orEmpty()
+    Regex("btih:([A-Fa-f0-9]{64}|[A-Fa-f0-9]{40}|[A-Za-z2-7]{32})", RegexOption.IGNORE_CASE)
+        .find(magnet)?.groupValues?.get(1)?.uppercase().orEmpty()
 
 /**
  * Client-side filters for options the Butter API has no server-side equivalent of.

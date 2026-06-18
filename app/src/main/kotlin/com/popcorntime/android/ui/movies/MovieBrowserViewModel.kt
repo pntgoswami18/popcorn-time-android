@@ -114,33 +114,62 @@ class MovieBrowserViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-
-            repository.getMovies(filter).fold(
-                onSuccess = { newMovies ->
-                    _uiState.update {
-                        val rawMovies = if (reset) newMovies else it.movies + newMovies
-                        it.copy(
-                            movies = applyFilters(rawMovies),
-                            isLoading = false,
-                            isLoadingMore = false,
-                            currentPage = page,
-                            // Butter returns ~50/page but client-side quality/rating filters
-                            // can shrink a page; only an empty page means the end.
-                            hasMore = newMovies.isNotEmpty(),
-                            filter = filter,
-                        )
-                    }
-                },
-                onFailure = { e ->
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            isLoadingMore = false,
-                            error = e.message ?: "Failed to load movies",
-                        )
-                    }
-                },
-            )
+            // Client-side filters (quality/rating/watched) can shrink a server page to
+            // nothing while the server still has more pages. So: hasMore is based on the
+            // RAW page size, and when a page filters to empty we keep auto-fetching the
+            // next page (bounded) so the user isn't left staring at an empty screen.
+            var currentPage = page
+            var fetchedMovies = emptyList<Movie>()
+            var hasMore = true
+            var attempts = 0
+            var failure: Throwable? = null
+            while (true) {
+                attempts++
+                val result = repository.getMovies(filter.copy(page = currentPage))
+                val moviePage = result.getOrNull()
+                if (moviePage == null) {
+                    failure = result.exceptionOrNull()
+                    break
+                }
+                fetchedMovies = fetchedMovies + moviePage.movies
+                // Only an empty RAW page means the end of the catalogue.
+                hasMore = moviePage.rawCount > 0
+                if (!shouldAutoFetchNextPage(
+                        filteredPageEmpty = applyFilters(fetchedMovies).isEmpty(),
+                        rawPageCount = moviePage.rawCount,
+                        attempts = attempts,
+                    )
+                ) {
+                    break
+                }
+                currentPage++
+            }
+            val error = failure
+            if (error != null && attempts == 1) {
+                // First fetch failed — surface the error.
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        isLoadingMore = false,
+                        error = error.message ?: "Failed to load movies",
+                    )
+                }
+            } else {
+                // Success, or an auto-fetch follow-up failed after we already got data —
+                // show what we have and let the next scroll retry.
+                val lastFetchedPage = if (error != null) currentPage - 1 else currentPage
+                _uiState.update {
+                    val rawMovies = if (reset) fetchedMovies else it.movies + fetchedMovies
+                    it.copy(
+                        movies = applyFilters(rawMovies),
+                        isLoading = false,
+                        isLoadingMore = false,
+                        currentPage = lastFetchedPage,
+                        hasMore = hasMore,
+                        filter = filter.copy(page = lastFetchedPage),
+                    )
+                }
+            }
         }
     }
 
@@ -189,6 +218,11 @@ class MovieBrowserViewModel @Inject constructor(
 
     fun pickRandom(): String? = _uiState.value.movies.randomOrNull()?.imdbId
 
+    companion object {
+        /** Bound on consecutive auto-fetches when client-side filters empty out pages. */
+        internal const val MAX_AUTO_FETCH_PAGES = 5
+    }
+
     private fun observeWatchedAndBookmarked() {
         // Single source of truth: libraryRepository via the top-level watchedIds StateFlow
         viewModelScope.launch {
@@ -203,3 +237,16 @@ class MovieBrowserViewModel @Inject constructor(
         }
     }
 }
+
+/**
+ * Decides whether to auto-fetch the next server page during a single load.
+ * True while client-side filters have emptied everything fetched so far, the
+ * server still returned a non-empty raw page, and we're under the fetch bound.
+ * Pure and JVM-testable.
+ */
+internal fun shouldAutoFetchNextPage(
+    filteredPageEmpty: Boolean,
+    rawPageCount: Int,
+    attempts: Int,
+    maxAttempts: Int = MovieBrowserViewModel.MAX_AUTO_FETCH_PAGES,
+): Boolean = filteredPageEmpty && rawPageCount > 0 && attempts < maxAttempts

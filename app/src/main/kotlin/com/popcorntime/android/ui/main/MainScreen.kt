@@ -171,6 +171,9 @@ private fun MainNavHost(navController: NavHostController, modifier: Modifier = M
                 imdbId = imdbId,
                 onBack = { navController.popBackStack() },
                 onPlayClick = { quality -> navController.navigate("player/${Uri.encode(imdbId)}/${Uri.encode(quality)}") },
+                onPlayDownload = { uri ->
+                    navController.navigate("player_local/${Uri.encode(uri)}")
+                },
             )
         }
 

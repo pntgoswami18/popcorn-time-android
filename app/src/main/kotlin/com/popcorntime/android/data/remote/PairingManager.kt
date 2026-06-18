@@ -31,7 +31,10 @@ import java.util.UUID
 class PairingManager(
     private val ttlMs: Long = DEFAULT_TTL_MS,
     private val clock: () -> Long,
-    private val issueToken: suspend () -> String,
+    /** Issues and persists a fresh session token for the given client name. */
+    private val issueToken: suspend (clientName: String) -> String,
+    /** Revokes a persisted token that could not be staged (session died mid-issuance). */
+    private val revokeToken: suspend (token: String) -> Unit = {},
 ) {
     companion object {
         /** Pairing code TTL. Must stay within the 60–120s acceptance window. */
@@ -46,6 +49,9 @@ class PairingManager(
         /** Per-IP sliding window rate limit for POST /pair. */
         private const val IP_WINDOW_MS = 60_000L
         private const val IP_MAX_ATTEMPTS = 10
+
+        /** Cap on distinct IPs tracked by the rate limiter (oldest evicted beyond this). */
+        private const val MAX_TRACKED_IPS = 100
 
         private const val CODE_LENGTH = 6
     }
@@ -157,7 +163,8 @@ class PairingManager(
     fun pollStatus(pairingId: String): PollResult = synchronized(lock) {
         expireIfNeeded()
         val s = session ?: return PollResult.Gone
-        if (s.pairingId != pairingId) return PollResult.Gone
+        // Constant-time: pairingId is an unauthenticated client-supplied secret.
+        if (!constantTimeEquals(pairingId, s.pairingId ?: return PollResult.Gone)) return PollResult.Gone
         when (s.state) {
             State.AWAITING_CONFIRMATION -> PollResult.Pending
             State.DENIED -> PollResult.Denied
@@ -179,23 +186,34 @@ class PairingManager(
     /**
      * Called when the user taps Allow on the confirmation dialog. Issues a
      * fresh session token and stages it for one-time pickup by [pollStatus].
+     *
+     * Issuance (which persists the token) happens outside the lock; if the
+     * session died in the meantime (cancelled, replaced, or expired) the token
+     * is revoked again so no orphaned, forever-valid token survives.
      */
     suspend fun confirm() {
         // Pre-check without holding the lock across the suspend point.
-        val shouldIssue = synchronized(lock) {
+        val clientName = synchronized(lock) {
             expireIfNeeded()
-            session?.state == State.AWAITING_CONFIRMATION
-        }
-        if (!shouldIssue) return
-        val token = issueToken()
-        synchronized(lock) {
             val s = session
             if (s == null || s.state != State.AWAITING_CONFIRMATION) return
-            s.state = State.CONFIRMED
-            s.stagedToken = token
-            s.expiresAtMs = maxOf(s.expiresAtMs, clock() + TOKEN_PICKUP_GRACE_MS)
-            _uiState.value = PairingUiState(lastResult = PairingResult.PAIRED)
+            s.clientName ?: "Paired device"
         }
+        val token = issueToken(clientName)
+        val staged = synchronized(lock) {
+            expireIfNeeded()
+            val s = session
+            if (s != null && s.state == State.AWAITING_CONFIRMATION) {
+                s.state = State.CONFIRMED
+                s.stagedToken = token
+                s.expiresAtMs = maxOf(s.expiresAtMs, clock() + TOKEN_PICKUP_GRACE_MS)
+                _uiState.value = PairingUiState(lastResult = PairingResult.PAIRED)
+                true
+            } else {
+                false
+            }
+        }
+        if (!staged) revokeToken(token)
     }
 
     /** Called when the user taps Deny on the confirmation dialog. */
@@ -242,13 +260,44 @@ class PairingManager(
 
     private fun isRateLimited(clientIp: String): Boolean {
         val now = clock()
-        val attempts = ipAttempts.getOrPut(clientIp) { ArrayDeque() }
-        while (attempts.isNotEmpty() && now - attempts.first() > IP_WINDOW_MS) {
-            attempts.removeFirst()
-        }
-        if (attempts.size >= IP_MAX_ATTEMPTS) return true
+        pruneIpAttempts(now)
+        val existing = ipAttempts[clientIp]
+        if (existing != null && existing.size >= IP_MAX_ATTEMPTS) return true
+        val attempts = existing ?: ArrayDeque<Long>().also { ipAttempts[clientIp] = it }
         attempts.addLast(now)
+        evictOverflowingIps()
         return false
+    }
+
+    /**
+     * Read-only rate-limit check for the server's pre-parse guard on POST /pair:
+     * lets the request be rejected BEFORE its body is read. Records nothing —
+     * [submitCode] still does the authoritative check-and-record.
+     */
+    fun isRateLimitedPrecheck(clientIp: String): Boolean = synchronized(lock) {
+        pruneIpAttempts(clock())
+        (ipAttempts[clientIp]?.size ?: 0) >= IP_MAX_ATTEMPTS
+    }
+
+    /** Drops attempts older than the window and removes IPs whose deque is empty. */
+    private fun pruneIpAttempts(now: Long) {
+        val iterator = ipAttempts.entries.iterator()
+        while (iterator.hasNext()) {
+            val (_, attempts) = iterator.next()
+            while (attempts.isNotEmpty() && now - attempts.first() > IP_WINDOW_MS) {
+                attempts.removeFirst()
+            }
+            if (attempts.isEmpty()) iterator.remove()
+        }
+    }
+
+    /** Caps the tracked-IP map; evicts the IPs with the oldest most-recent attempt. */
+    private fun evictOverflowingIps() {
+        while (ipAttempts.size > MAX_TRACKED_IPS) {
+            val oldest = ipAttempts.entries.minByOrNull { it.value.lastOrNull() ?: Long.MIN_VALUE }
+                ?: return
+            ipAttempts.remove(oldest.key)
+        }
     }
 
     private fun generateCode(): String =

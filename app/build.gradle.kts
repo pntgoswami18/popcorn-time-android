@@ -29,8 +29,12 @@ android {
         // Torrent engine ABI filters — arm64 covers all modern Android devices
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
 
-        buildConfigField("String", "TRAKT_CLIENT_ID", "\"YOUR_TRAKT_CLIENT_ID_HERE\"")
-        buildConfigField("String", "TRAKT_CLIENT_SECRET", "\"YOUR_TRAKT_CLIENT_SECRET_HERE\"")
+        val traktClientId = localProperties.getProperty("trakt.client_id")
+            ?: System.getenv("TRAKT_CLIENT_ID") ?: ""
+        val traktClientSecret = localProperties.getProperty("trakt.client_secret")
+            ?: System.getenv("TRAKT_CLIENT_SECRET") ?: ""
+        buildConfigField("String", "TRAKT_CLIENT_ID", "\"$traktClientId\"")
+        buildConfigField("String", "TRAKT_CLIENT_SECRET", "\"$traktClientSecret\"")
         val osApiKey = localProperties.getProperty("opensubtitles.api_key")
             ?: System.getenv("OPENSUBTITLES_API_KEY")
             ?: ""

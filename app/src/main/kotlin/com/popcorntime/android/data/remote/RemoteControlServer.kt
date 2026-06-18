@@ -47,7 +47,11 @@ class RemoteControlServer @Inject constructor(
         private val STATUS_ACCEPTED = httpStatus(202, "Accepted")
         private val STATUS_CONFLICT = httpStatus(409, "Conflict")
         private val STATUS_GONE = httpStatus(410, "Gone")
+        private val STATUS_PAYLOAD_TOO_LARGE = httpStatus(413, "Payload Too Large")
         private val STATUS_TOO_MANY_REQUESTS = httpStatus(429, "Too Many Requests")
+
+        /** Cap on request bodies we are willing to buffer (pair / queue add payloads are tiny). */
+        private const val MAX_BODY_BYTES = 4096L
     }
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -76,10 +80,6 @@ class RemoteControlServer @Inject constructor(
     suspend fun startIfNotRunning(token: String) = withContext(Dispatchers.IO) {
         if (!isAlive) {
             cachedTokenRef.set(token)
-            sessionTokenJob?.cancel()
-            sessionTokenJob = scope.launch {
-                tokenStore.observeSessionTokens().collect { sessionTokensRef.set(it) }
-            }
             // TLS only — never serve the API over cleartext HTTP. makeSecure
             // just records the socket factory, so calling it before every
             // start() keeps restart cycles secure too.
@@ -88,6 +88,12 @@ class RemoteControlServer @Inject constructor(
                 tlsCertificateManager.enabledTlsProtocols().takeIf { it.isNotEmpty() },
             )
             start(SOCKET_READ_TIMEOUT, false)
+            // Launch the session-token collector only after start() succeeded —
+            // a throwing start() must not leak a long-lived collector.
+            sessionTokenJob?.cancel()
+            sessionTokenJob = scope.launch {
+                tokenStore.observeSessionTokens().collect { sessionTokensRef.set(it) }
+            }
             _isAlive.value = isAlive
             Timber.d("RemoteControlServer started on port $REMOTE_PORT (TLS)")
         }
@@ -96,12 +102,15 @@ class RemoteControlServer @Inject constructor(
     fun stopIfRunning() {
         if (isAlive) {
             stop()
-            sessionTokenJob?.cancel()
-            sessionTokenJob = null
-            pairingManager.cancelPairing()
-            _isAlive.value = false
             Timber.d("RemoteControlServer stopped")
         }
+        // Cleanup runs unconditionally (it's idempotent): even if start() threw
+        // half-way, disabling remote control must cancel the collector and any
+        // in-flight pairing session.
+        sessionTokenJob?.cancel()
+        sessionTokenJob = null
+        pairingManager.cancelPairing()
+        _isAlive.value = false
     }
 
     fun invalidateToken() { cachedTokenRef.set(null) }
@@ -174,6 +183,13 @@ class RemoteControlServer @Inject constructor(
     // --- Pairing -------------------------------------------------------------
 
     private fun handlePairStart(session: IHTTPSession): Response {
+        // Pre-parse guards: this endpoint is unauthenticated, so rate-limit the
+        // client and cap the body size BEFORE buffering any of the request body.
+        val clientIp = session.remoteIpAddress ?: "unknown"
+        if (pairingManager.isRateLimitedPrecheck(clientIp)) {
+            return pairError(STATUS_TOO_MANY_REQUESTS, "rate_limited")
+        }
+        rejectOversizedBody(session)?.let { return it }
         val request = try {
             val bodyMap = mutableMapOf<String, String>()
             session.parseBody(bodyMap)
@@ -182,7 +198,6 @@ class RemoteControlServer @Inject constructor(
         } catch (e: Exception) {
             return pairError(Response.Status.BAD_REQUEST, "invalid_request")
         }
-        val clientIp = session.remoteIpAddress ?: "unknown"
         return when (val result = pairingManager.submitCode(request.code, request.clientName, clientIp)) {
             is PairingManager.SubmitResult.Accepted -> newFixedLengthResponse(
                 STATUS_ACCEPTED,
@@ -223,6 +238,17 @@ class RemoteControlServer @Inject constructor(
 
     private fun pairError(status: Response.IStatus, error: String): Response =
         newFixedLengthResponse(status, MIME_JSON, json.encodeToString(PairErrorResponse(error)))
+
+    /** Returns a 413 response when the declared Content-Length exceeds [MAX_BODY_BYTES]. */
+    private fun rejectOversizedBody(session: IHTTPSession): Response? {
+        val contentLength = session.headers["content-length"]?.toLongOrNull() ?: 0L
+        if (contentLength <= MAX_BODY_BYTES) return null
+        return newFixedLengthResponse(
+            STATUS_PAYLOAD_TOO_LARGE,
+            MIME_JSON,
+            """{"error":"Payload too large"}""",
+        )
+    }
 
     private fun serveIndexPage(): Response {
         return try {
@@ -281,6 +307,7 @@ class RemoteControlServer @Inject constructor(
     }
 
     private fun handleQueueAdd(session: IHTTPSession): Response {
+        rejectOversizedBody(session)?.let { return it }
         return try {
             val bodyMap = mutableMapOf<String, String>()
             session.parseBody(bodyMap)

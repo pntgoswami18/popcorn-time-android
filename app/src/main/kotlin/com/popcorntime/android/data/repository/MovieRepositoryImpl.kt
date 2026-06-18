@@ -14,6 +14,7 @@ import com.popcorntime.android.domain.model.Movie
 import com.popcorntime.android.domain.model.MovieFilter
 import com.popcorntime.android.domain.model.Torrent
 import com.popcorntime.android.domain.model.TorrentSource
+import com.popcorntime.android.domain.repository.MoviePage
 import com.popcorntime.android.domain.repository.MovieRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -30,7 +31,7 @@ class MovieRepositoryImpl @Inject constructor(
     private val jackettApi: JackettApiService,
 ) : MovieRepository {
 
-    override suspend fun getMovies(filter: MovieFilter): Result<List<Movie>> = safeRunCatching {
+    override suspend fun getMovies(filter: MovieFilter): Result<MoviePage> = safeRunCatching {
         if (sourcePrefs.getMovieSource() == TorrentSource.JACKETT) {
             val baseUrl = sourcePrefs.getJackettUrl()
             val apiKey = sourcePrefs.getJackettApiKey()
@@ -38,7 +39,7 @@ class MovieRepositoryImpl @Inject constructor(
                 val query = filter.queryTerm.ifBlank { filter.genre.takeIf { it != "All" } ?: "popular" }
                 val results = jackettApi.searchMovies(query, apiKey, baseUrl)
                 if (results.isNotEmpty()) {
-                    return@safeRunCatching results.mapIndexed { _, dto ->
+                    val movies = results.map { dto ->
                         val torrent = dto.toMovieTorrent()
                         Movie(
                             id = dto.infoHash.ifBlank { dto.title }.hashCode().and(0x7FFFFFFF),
@@ -58,14 +59,21 @@ class MovieRepositoryImpl @Inject constructor(
                             torrents = mapOf(torrent.quality to torrent),
                         )
                     }
+                    return@safeRunCatching MoviePage(movies = movies, rawCount = movies.size)
                 }
             }
         }
         // Fall through to the Butter / popcorn-ru mirrors (same servers popcorn-desktop uses).
         // quality / minimumRating have no server-side equivalent → filtered client-side.
-        api.listMovies(filter)
+        // rawCount carries the pre-filter page size so pagination doesn't stop early
+        // when a whole server page gets filtered out.
+        val raw = api.listMovies(filter)
+            .filter { it.imdbId.isNotBlank() || it.id.isNotBlank() }
             .map { it.toDomain() }
-            .applyClientSideFilters(filter.quality, filter.minimumRating)
+        MoviePage(
+            movies = raw.applyClientSideFilters(filter.quality, filter.minimumRating),
+            rawCount = raw.size,
+        )
     }
 
     override suspend fun getMovieDetail(imdbId: String): Result<Movie> {

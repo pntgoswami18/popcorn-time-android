@@ -4,19 +4,40 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.popcorntime.android.data.torrent.DownloadManager
+import com.popcorntime.android.data.torrent.DownloadStats
 import com.popcorntime.android.domain.model.LibraryContentType
 import com.popcorntime.android.domain.model.LibraryItem
 import com.popcorntime.android.domain.model.Movie
 import com.popcorntime.android.domain.model.Torrent
 import com.popcorntime.android.domain.repository.LibraryRepository
 import com.popcorntime.android.domain.repository.MovieRepository
+import com.popcorntime.android.ui.settings.resolvePlayableVideoUri
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+/** Download status of this movie, derived from DownloadManager state. */
+sealed interface MovieDownloadState {
+    data object NotDownloaded : MovieDownloadState
+
+    /** Entity exists and is incomplete, but it is not the actively-downloading item. */
+    data object Queued : MovieDownloadState
+
+    /** This is the active download but live stats have not arrived yet. */
+    data object Starting : MovieDownloadState
+
+    data class Downloading(val stats: DownloadStats) : MovieDownloadState
+
+    /** Download finished; [localUri] is the playable file URI if one was resolved. */
+    data class Downloaded(val localUri: String?) : MovieDownloadState
+}
 
 data class MovieDetailUiState(
     val movie: Movie? = null,
@@ -26,6 +47,9 @@ data class MovieDetailUiState(
     val isBookmarked: Boolean = false,
     val isInWatchlist: Boolean = false,
     val selectedQuality: String = "1080p",
+    val downloadState: MovieDownloadState = MovieDownloadState.NotDownloaded,
+    /** One-shot message shown in a snackbar, e.g. when a download is rejected. */
+    val transientMessage: String? = null,
 )
 
 @HiltViewModel
@@ -42,6 +66,31 @@ class MovieDetailViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(MovieDetailUiState(isLoading = true))
     val uiState: StateFlow<MovieDetailUiState> = _uiState.asStateFlow()
+
+    init {
+        // Keep the per-movie download state in sync with DownloadManager.
+        viewModelScope.launch {
+            combine(
+                downloadManager.downloads,
+                downloadManager.activeDownloadStats,
+                downloadManager.activeImdbId,
+            ) { downloads, stats, activeId ->
+                val entity = downloads.find { it.imdbId == imdbId }
+                when {
+                    entity == null -> MovieDownloadState.NotDownloaded
+                    entity.completedAt != null ->
+                        MovieDownloadState.Downloaded(resolvePlayableVideoUri(entity.filePath))
+                    stats?.imdbId == imdbId -> MovieDownloadState.Downloading(stats)
+                    activeId == imdbId -> MovieDownloadState.Starting
+                    else -> MovieDownloadState.Queued
+                }
+            }
+                .flowOn(Dispatchers.IO) // resolvePlayableVideoUri walks the filesystem
+                .collect { downloadState ->
+                    _uiState.update { it.copy(downloadState = downloadState) }
+                }
+        }
+    }
 
     fun loadMovie(movie: Movie) {
         viewModelScope.launch {
@@ -92,43 +141,64 @@ class MovieDetailViewModel @Inject constructor(
     fun toggleWatched() {
         viewModelScope.launch {
             val movie = _uiState.value.movie ?: return@launch
-            if (_uiState.value.isWatched) {
-                libraryRepository.unmarkWatched(imdbId)
-            } else {
-                libraryRepository.markWatched(imdbId, movie.toLibraryItem())
+            val wasWatched = _uiState.value.isWatched
+            try {
+                if (wasWatched) libraryRepository.unmarkWatched(imdbId)
+                else libraryRepository.markWatched(imdbId, movie.toLibraryItem())
+                _uiState.update { it.copy(isWatched = !wasWatched) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(transientMessage = "Failed to update watched status") }
             }
-            _uiState.update { it.copy(isWatched = !it.isWatched) }
         }
     }
 
     fun toggleBookmark() {
         viewModelScope.launch {
             val movie = _uiState.value.movie ?: return@launch
-            libraryRepository.toggleFavourite(imdbId, movie.toLibraryItem())
-            _uiState.update { it.copy(isBookmarked = !it.isBookmarked) }
+            val wasBookmarked = _uiState.value.isBookmarked
+            try {
+                libraryRepository.toggleFavourite(imdbId, movie.toLibraryItem())
+                _uiState.update { it.copy(isBookmarked = !wasBookmarked) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(transientMessage = "Failed to update bookmark") }
+            }
         }
     }
 
     fun toggleWatchlist() {
         viewModelScope.launch {
             val movie = _uiState.value.movie ?: return@launch
-            if (_uiState.value.isInWatchlist) {
-                libraryRepository.removeFromWatchlist(imdbId)
-            } else {
-                libraryRepository.addToWatchlist(imdbId, movie.toLibraryItem())
+            val wasInWatchlist = _uiState.value.isInWatchlist
+            try {
+                if (wasInWatchlist) libraryRepository.removeFromWatchlist(imdbId)
+                else libraryRepository.addToWatchlist(imdbId, movie.toLibraryItem())
+                _uiState.update { it.copy(isInWatchlist = !wasInWatchlist) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(transientMessage = "Failed to update watchlist") }
             }
-            _uiState.update { it.copy(isInWatchlist = !it.isInWatchlist) }
         }
     }
 
     fun startDownload(torrent: Torrent) {
         val movie = _uiState.value.movie ?: return
-        downloadManager.startDownload(
+        val started = downloadManager.startDownload(
             movie.imdbId,
             movie.title,
             torrent.magnet.ifBlank { torrent.url },
             torrent.quality,
         )
+        if (!started) {
+            _uiState.update { it.copy(transientMessage = "Another download is already in progress") }
+        }
+    }
+
+    /** Called by the UI after the snackbar for [MovieDetailUiState.transientMessage] is shown. */
+    fun consumeTransientMessage() {
+        _uiState.update { it.copy(transientMessage = null) }
+    }
+
+    fun cancelDownload() {
+        downloadManager.cancelDownload(imdbId)
     }
 
     private fun qualityRank(quality: String) = when (quality) {

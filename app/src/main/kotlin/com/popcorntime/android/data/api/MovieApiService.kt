@@ -47,30 +47,38 @@ class MovieApiService @Inject constructor(
     }
 
     /**
-     * Runs [block] against the head server; on failure rotates it to the back and
-     * retries with the next one. On success the working server is kept at the head.
+     * Runs [block] against each server in queue order until one succeeds; failed
+     * servers are demoted to the back, the working one is promoted to the head.
+     *
+     * The mutex only guards the queue snapshot and reordering — never the HTTP
+     * request itself — so concurrent browse/search/detail calls don't serialize
+     * (and a dead mirror's timeout doesn't block every other request).
      */
-    private suspend fun <T> withRotation(block: suspend (base: String) -> T): T =
-        serverMutex.withLock {
-            val errors = mutableListOf<Throwable>()
-            repeat(serverQueue.size) {
-                val base = serverQueue.first()
-                try {
-                    val result = block(base)
-                    // On success, promote this server to head
+    private suspend fun <T> withRotation(block: suspend (base: String) -> T): T {
+        val order = serverMutex.withLock { serverQueue.toList() }
+        val errors = mutableListOf<Throwable>()
+        for (base in order) {
+            try {
+                val result = block(base)
+                // On success, promote this server to head
+                serverMutex.withLock {
                     serverQueue.remove(base)
                     serverQueue.addFirst(base)
-                    return@withLock result
-                } catch (e: Exception) {
-                    Timber.w(e, "Server $base failed, rotating")
-                    errors += e
-                    // Rotate — move failed server to the back
+                }
+                return result
+            } catch (e: Exception) {
+                if (e is kotlinx.serialization.SerializationException) throw e
+                Timber.w(e, "Server $base failed, rotating")
+                errors += e
+                // Rotate — move failed server to the back
+                serverMutex.withLock {
                     serverQueue.remove(base)
                     serverQueue.addLast(base)
                 }
             }
-            throw errors.lastOrNull() ?: IllegalStateException("No servers configured")
         }
+        throw errors.lastOrNull() ?: IllegalStateException("No servers configured")
+    }
 
     companion object {
         /**

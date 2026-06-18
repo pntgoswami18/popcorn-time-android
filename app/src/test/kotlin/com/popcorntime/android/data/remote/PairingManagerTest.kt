@@ -5,6 +5,7 @@ import com.popcorntime.android.data.remote.PairingManager.PollResult
 import com.popcorntime.android.data.remote.PairingManager.SubmitResult
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -14,10 +15,16 @@ class PairingManagerTest {
 
     private var now = 0L
     private var issuedTokens = 0
+    private val issuedForNames = mutableListOf<String>()
+    private val revokedTokens = mutableListOf<String>()
     private fun newManager(ttlMs: Long = PairingManager.DEFAULT_TTL_MS) = PairingManager(
         ttlMs = ttlMs,
         clock = { now },
-        issueToken = { "session-token-${++issuedTokens}" },
+        issueToken = { name ->
+            issuedForNames += name
+            "session-token-${++issuedTokens}"
+        },
+        revokeToken = { revokedTokens += it },
     )
 
     private fun PairingManager.accept(code: String, ip: String = "10.0.0.2"): String {
@@ -182,5 +189,88 @@ class PairingManagerTest {
         manager.confirm() // nothing awaiting confirmation
         assertEquals(0, issuedTokens)
         assertNotEquals(PairingResult.PAIRED, manager.uiState.value.lastResult)
+    }
+
+    @Test
+    fun `client name is passed through to the token issuer`() = runBlocking {
+        val manager = newManager()
+        val code = manager.startPairing()
+        manager.accept(code)
+        manager.confirm()
+        assertEquals(listOf("Test device"), issuedForNames)
+        assertTrue(revokedTokens.isEmpty())
+    }
+
+    @Test
+    fun `token issued while session is cancelled mid-flight is revoked, not staged`() = runBlocking {
+        // issueToken runs outside the lock; simulate the session being cancelled
+        // exactly during issuance (e.g. user backs out / server stops).
+        lateinit var manager: PairingManager
+        manager = PairingManager(
+            clock = { now },
+            issueToken = {
+                manager.cancelPairing()
+                "orphan-token"
+            },
+            revokeToken = { revokedTokens += it },
+        )
+        val code = manager.startPairing()
+        val pairingId = manager.accept(code)
+        manager.confirm()
+        assertEquals(listOf("orphan-token"), revokedTokens)
+        assertEquals(PollResult.Gone, manager.pollStatus(pairingId))
+        assertNotEquals(PairingResult.PAIRED, manager.uiState.value.lastResult)
+    }
+
+    @Test
+    fun `confirm landing at ttl expiry revokes the token`() = runBlocking {
+        lateinit var manager: PairingManager
+        manager = PairingManager(
+            ttlMs = 90_000,
+            clock = { now },
+            issueToken = {
+                now = 90_001 // session expires while the token is being issued
+                "late-token"
+            },
+            revokeToken = { revokedTokens += it },
+        )
+        val code = manager.startPairing()
+        val pairingId = manager.accept(code)
+        manager.confirm()
+        assertEquals(listOf("late-token"), revokedTokens)
+        assertEquals(PollResult.Gone, manager.pollStatus(pairingId))
+        assertNotEquals(PairingResult.PAIRED, manager.uiState.value.lastResult)
+    }
+
+    @Test
+    fun `rate limit precheck reflects state without recording attempts`() {
+        val manager = newManager()
+        // Prechecks never count as attempts.
+        repeat(50) { assertFalse(manager.isRateLimitedPrecheck("1.2.3.4")) }
+        repeat(10) { assertEquals(SubmitResult.Expired, manager.submitCode("123456", null, "1.2.3.4")) }
+        assertTrue(manager.isRateLimitedPrecheck("1.2.3.4"))
+        assertFalse(manager.isRateLimitedPrecheck("5.6.7.8"))
+        // The window slides for the precheck too.
+        now += 61_000
+        assertFalse(manager.isRateLimitedPrecheck("1.2.3.4"))
+    }
+
+    @Test
+    fun `rate limiter map is capped and evicts the stalest ips`() {
+        val manager = newManager()
+        // Rate-limit one IP with attempts at t=0..9.
+        repeat(10) {
+            manager.submitCode("123456", null, "attacker")
+            now += 1
+        }
+        assertEquals(SubmitResult.RateLimited, manager.submitCode("123456", null, "attacker"))
+        // Flood with >100 distinct fresh IPs (all within the window) — the cap
+        // must evict the attacker's (stalest) entry instead of growing forever.
+        repeat(110) { i ->
+            manager.submitCode("123456", null, "10.0.0.$i")
+            now += 1
+        }
+        // The attacker's history was evicted, so it is no longer rate limited.
+        assertEquals(SubmitResult.Expired, manager.submitCode("123456", null, "attacker"))
     }
 }

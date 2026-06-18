@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
@@ -21,9 +22,15 @@ import com.popcorntime.android.data.db.entity.DownloadEntity
 import com.popcorntime.android.data.torrent.DownloadManager
 import com.popcorntime.android.data.torrent.DownloadStats
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.Locale
 import javax.inject.Inject
 
 private val VIDEO_EXTENSIONS = setOf("mp4", "mkv", "avi", "mov", "webm", "m4v", "wmv", "flv")
@@ -34,6 +41,21 @@ class DownloadsViewModel @Inject constructor(
 ) : ViewModel() {
     val downloads: StateFlow<List<DownloadEntity>> = downloadManager.downloads
     val activeDownloadStats: StateFlow<DownloadStats?> = downloadManager.activeDownloadStats
+    val activeImdbId: StateFlow<String?> = downloadManager.activeImdbId
+
+    /** Playable local URIs for completed downloads, resolved off the main thread.
+     *  Recomputed whenever the downloads list changes. */
+    val playableUris: StateFlow<Map<String, String?>> = downloadManager.downloads
+        .map { list ->
+            list.filter { it.completedAt != null }
+                .associate { it.imdbId to resolvePlayableVideoUri(it.filePath) }
+        }
+        .flowOn(Dispatchers.IO)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    fun cancelDownload(imdbId: String) {
+        downloadManager.cancelDownload(imdbId)
+    }
 
     fun deleteDownload(imdbId: String) {
         viewModelScope.launch { downloadManager.deleteDownload(imdbId) }
@@ -78,6 +100,8 @@ fun DownloadsTabContent(
 ) {
     val downloads by viewModel.downloads.collectAsStateWithLifecycle()
     val activeStats by viewModel.activeDownloadStats.collectAsStateWithLifecycle()
+    val activeImdbId by viewModel.activeImdbId.collectAsStateWithLifecycle()
+    val playableUris by viewModel.playableUris.collectAsStateWithLifecycle()
 
     if (downloads.isEmpty()) {
         Box(
@@ -97,12 +121,14 @@ fun DownloadsTabContent(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             items(downloads, key = { it.imdbId }) { download ->
+                val playableUri = playableUris[download.imdbId]
                 DownloadItem(
                     download = download,
                     activeStats = activeStats?.takeIf { it.imdbId == download.imdbId },
-                    onPlay = {
-                        resolvePlayableVideoUri(download.filePath)?.let(onPlayDownload)
-                    },
+                    isActive = download.imdbId == (activeImdbId ?: activeStats?.imdbId),
+                    playableUri = playableUri,
+                    onPlay = { playableUri?.let(onPlayDownload) },
+                    onCancel = { viewModel.cancelDownload(download.imdbId) },
                     onDelete = { viewModel.deleteDownload(download.imdbId) },
                 )
             }
@@ -114,11 +140,14 @@ fun DownloadsTabContent(
 private fun DownloadItem(
     download: DownloadEntity,
     activeStats: DownloadStats?,
+    isActive: Boolean,
+    playableUri: String?,
     onPlay: () -> Unit,
+    onCancel: () -> Unit,
     onDelete: () -> Unit,
 ) {
     val isCompleted = download.completedAt != null
-    val isPlayable = isCompleted && resolvePlayableVideoUri(download.filePath) != null
+    val isPlayable = isCompleted && playableUri != null
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier
@@ -147,6 +176,15 @@ private fun DownloadItem(
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (!isCompleted && isActive) {
+                        IconButton(onClick = onCancel) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Cancel download",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                     if (isCompleted) {
                         IconButton(
                             onClick = onPlay,
@@ -183,16 +221,16 @@ private fun DownloadItem(
                     progress = { activeStats.progress },
                     modifier = Modifier.fillMaxWidth(),
                 )
-                val pct = (activeStats.progress * 100).toInt()
-                val dlMb = activeStats.downloadedBytes / 1_048_576f
-                val totalMb = activeStats.totalBytes / 1_048_576f
-                val speedKb = activeStats.downloadSpeedBps / 1024f
-                val sizeText = if (activeStats.totalBytes > 0)
-                    "%.1f MB / %.1f MB".format(dlMb, totalMb)
-                else
-                    "%.1f MB downloaded".format(dlMb)
                 Text(
-                    "$pct% · $sizeText · %.0f KB/s".format(speedKb),
+                    formatDownloadStatsLabel(activeStats),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else if (isActive) {
+                // Actively downloading but no stats yet — show indeterminate progress.
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                Text(
+                    "Starting…",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -205,6 +243,23 @@ private fun DownloadItem(
             }
         }
     }
+}
+
+/** Builds the "45% · 12.3 MB / 700.0 MB · 512 KB/s" stats line for an in-progress download.
+ *  Pure and JVM-testable. Never embeds runtime values into a format string, so values
+ *  containing '%' or other format-significant characters cannot crash the formatter. */
+internal fun formatDownloadStatsLabel(stats: DownloadStats): String {
+    val pct = (stats.progress * 100).toInt()
+    val dlMb = stats.downloadedBytes / 1_048_576f
+    val totalMb = stats.totalBytes / 1_048_576f
+    val speedKb = stats.downloadSpeedBps / 1024f
+    val sizeText = if (stats.totalBytes > 0) {
+        "%.1f MB / %.1f MB".format(Locale.US, dlMb, totalMb)
+    } else {
+        "%.1f MB downloaded".format(Locale.US, dlMb)
+    }
+    val speedText = "%.0f".format(Locale.US, speedKb)
+    return "$pct% · $sizeText · $speedText KB/s"
 }
 
 internal fun resolvePlayableVideoUri(filePath: String?): String? {

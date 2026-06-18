@@ -160,8 +160,8 @@ class ButterMovieDtoTest {
         assertEquals(105, movie.runtime)
         assertEquals(1327819, movie.id) // tmdb id
         assertEquals("tt26443616", movie.imdbId)
-        assertEquals("http://image.tmdb.org/t/p/w500/xjtWQ2CL1mpmMNwuU5HeS4Iuwuu.jpg", movie.posterUrl)
-        assertEquals("http://image.tmdb.org/t/p/w500/u53UYu5XG2hNgWGvs3xGhAVzypl.jpg", movie.backdropUrl)
+        assertEquals("https://image.tmdb.org/t/p/w500/xjtWQ2CL1mpmMNwuU5HeS4Iuwuu.jpg", movie.posterUrl)
+        assertEquals("https://image.tmdb.org/t/p/w500/u53UYu5XG2hNgWGvs3xGhAVzypl.jpg", movie.backdropUrl)
         assertEquals("PG", movie.certification)
         assertEquals("http://www.youtube.com/watch?v=PypDSyIRRSs", movie.trailerUrl)
         assertTrue("Science Fiction" in movie.genres)
@@ -194,6 +194,47 @@ class ButterMovieDtoTest {
         val torrents = movie.flattenTorrents()
         assertEquals(setOf("720p"), torrents.keys)
         assertEquals("720p", torrents["720p"]!!.quality) // falls back to map key
+    }
+
+    @Test
+    fun `non-magnet torrent urls are dropped`() {
+        val movie: ButterMovieDto = json.decodeFromString(
+            """
+            {"_id": "tt3", "title": "Mixed", "torrents": {"en": {
+              "1080p": {"url": "https://evil.example.com/payload.exe", "seed": 1, "peer": 1},
+              "720p": {"url": "magnet:?xt=urn:btih:A9F845CA6ACD516E0CDFF0088648B7C3C14DAE61", "seed": 1, "peer": 1}
+            }}}
+            """.trimIndent()
+        )
+        val torrents = movie.flattenTorrents()
+        assertEquals(setOf("720p"), torrents.keys)
+    }
+
+    @Test
+    fun `magnet urls without a parseable btih infohash are dropped`() {
+        val movie: ButterMovieDto = json.decodeFromString(
+            """
+            {"_id": "tt4", "title": "BadHash", "torrents": {"en": {
+              "1080p": {"url": "magnet:?xt=urn:btih:NOTAVALIDHASH&amp;dn=x", "seed": 1, "peer": 1},
+              "720p": {"url": "magnet:?dn=no-infohash-at-all", "seed": 1, "peer": 1},
+              "2160p": {"url": "", "seed": 1, "peer": 1}
+            }}}
+            """.trimIndent()
+        )
+        assertEquals(emptyMap<String, Torrent>(), movie.flattenTorrents())
+    }
+
+    @Test
+    fun `toDomainOrNull keeps valid magnets and extracts the infohash`() {
+        val movie: ButterMovieDto = json.decodeFromString(
+            """
+            {"_id": "tt5", "title": "Good", "torrents": {"en": {
+              "1080p": {"url": "magnet:?xt=urn:btih:b6e0a23a7e9239dbf5b4883887dd636311b486fc&amp;dn=x", "seed": 1, "peer": 1}
+            }}}
+            """.trimIndent()
+        )
+        val torrent = movie.flattenTorrents()["1080p"]!!
+        assertEquals("B6E0A23A7E9239DBF5B4883887DD636311B486FC", torrent.hash)
     }
 
     // ── Client-side filters ───────────────────────────────────────────────────
