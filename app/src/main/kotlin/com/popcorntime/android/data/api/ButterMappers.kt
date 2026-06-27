@@ -87,12 +87,12 @@ fun extractInfoHash(magnet: String): String =
 /**
  * Client-side filters for options the Butter API has no server-side equivalent of.
  *
- * @param quality "All" or a quality key like "1080p" — keeps movies having a torrent of that quality.
+ * @param quality "All Quality" or a quality key like "1080p" — keeps movies having a torrent of that quality.
  * @param minimumRating 0..9 minimum rating on the 0-10 scale (rating.percentage / 10).
  */
 fun List<Movie>.applyClientSideFilters(quality: String, minimumRating: Int): List<Movie> {
     var result = this
-    if (quality != "All" && quality.isNotBlank()) {
+    if (quality != "All Quality" && quality.isNotBlank()) {
         result = result.filter { quality in it.torrents.keys }
     }
     if (minimumRating > 0) {

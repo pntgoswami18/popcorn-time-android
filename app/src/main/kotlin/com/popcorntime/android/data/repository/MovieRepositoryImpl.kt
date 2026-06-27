@@ -36,7 +36,7 @@ class MovieRepositoryImpl @Inject constructor(
             val baseUrl = sourcePrefs.getJackettUrl()
             val apiKey = sourcePrefs.getJackettApiKey()
             if (baseUrl.isNotBlank() && apiKey.isNotBlank()) {
-                val query = filter.queryTerm.ifBlank { filter.genre.takeIf { it != "All" } ?: "popular" }
+                val query = filter.queryTerm.ifBlank { filter.genre.takeIf { it != "All Genre" } ?: "popular" }
                 val results = jackettApi.searchMovies(query, apiKey, baseUrl)
                 if (results.isNotEmpty()) {
                     val movies = results.map { dto ->

@@ -35,7 +35,7 @@ class MovieApiService @Inject constructor(
             expectSuccess = true
             parameter("sort", toButterSort(filter.sortBy))
             parameter("order", if (filter.orderBy.equals("asc", ignoreCase = true)) 1 else -1)
-            if (filter.genre != "All") parameter("genre", filter.genre.lowercase())
+            if (filter.genre != "All Genre") parameter("genre", filter.genre.lowercase())
             if (filter.queryTerm.isNotBlank()) parameter("keywords", filter.queryTerm)
         }.body()
     }

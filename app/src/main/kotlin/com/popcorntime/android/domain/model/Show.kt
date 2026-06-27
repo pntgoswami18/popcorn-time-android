@@ -55,7 +55,7 @@ fun Show.seasons(): List<Season> =
 
 data class ShowFilter(
     val page: Int = 1,
-    val genre: String = "All",
+    val genre: String = "All Genre",
     val sortBy: String = "trending",
     val order: Int = -1,
     val keywords: String = "",

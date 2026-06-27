@@ -36,9 +36,9 @@ data class MovieBrowserUiState(
     val currentPage: Int = 1,
     val hasMore: Boolean = true,
     val searchQuery: String = "",
-    val selectedGenre: String = "All",
-    val selectedSort: SortOption = SortOption.LAST_ADDED,
-    val selectedQuality: String = "All",
+    val selectedGenre: String = "All Genre",
+    val selectedSort: SortOption = SortOption.TRENDING,
+    val selectedQuality: String = "All Quality",
     val watchedIds: Set<String> = emptySet(),
     val bookmarkedIds: Set<String> = emptySet(),
 )
@@ -215,8 +215,6 @@ class MovieBrowserViewModel @Inject constructor(
             libraryRepository.toggleFavourite(imdbId, metadata)
         }
     }
-
-    fun pickRandom(): String? = _uiState.value.movies.randomOrNull()?.imdbId
 
     companion object {
         /** Bound on consecutive auto-fetches when client-side filters empty out pages. */

@@ -4,7 +4,6 @@ import android.net.Uri
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Slideshow
 import androidx.compose.material.icons.filled.Star
@@ -24,7 +23,6 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.popcorntime.android.domain.model.ContentType
 import com.popcorntime.android.domain.model.LibraryContentType
-import com.popcorntime.android.ui.files.LocalFilesScreen
 import com.popcorntime.android.ui.library.LibraryScreen
 import com.popcorntime.android.ui.movies.MovieBrowserScreen
 import com.popcorntime.android.ui.movies.MovieDetailScreen
@@ -44,10 +42,9 @@ sealed class Tab(val route: String, val label: String, val icon: ImageVector) {
     data object Series : Tab("tab_series", "Series", Icons.Default.Slideshow)
     data object Anime : Tab("tab_anime", "Anime", Icons.Default.Star)
     data object Library : Tab("tab_library", "Library", Icons.Default.VideoLibrary)
-    data object Files : Tab("tab_files", "Files", Icons.Default.Folder)
 
     companion object {
-        val all = listOf(Movies, Series, Anime, Library, Files)
+        val all = listOf(Movies, Series, Anime, Library)
     }
 }
 
@@ -255,15 +252,6 @@ private fun MainNavHost(navController: NavHostController, modifier: Modifier = M
         composable("settings/torrent") {
             TorrentSettingsScreen(onBack = { navController.popBackStack() })
         }
-        // ── Files tab ─────────────────────────────────────────────────────────
-        composable(Tab.Files.route) {
-            LocalFilesScreen(
-                onPlayFile = { uri ->
-                    navController.navigate("player_local/${Uri.encode(uri)}")
-                },
-            )
-        }
-
         // ── Player (shared across all tabs) ───────────────────────────────────
         composable(
             route = "player/{imdbId}/{quality}?season={season}&episode={episode}&contentType={contentType}",

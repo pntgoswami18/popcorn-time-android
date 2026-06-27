@@ -33,7 +33,7 @@ data class ShowBrowserUiState(
     val currentPage: Int = 1,
     val hasMore: Boolean = true,
     val searchQuery: String = "",
-    val selectedGenre: String = "All",
+    val selectedGenre: String = "All Genre",
     val selectedSort: String = "trending",
     val watchedIds: Set<String> = emptySet(),
     val bookmarkedIds: Set<String> = emptySet(),
@@ -162,8 +162,6 @@ class ShowBrowserViewModel @Inject constructor(
             libraryRepository.toggleFavourite(imdbId, metadata)
         }
     }
-
-    fun pickRandom(): String? = _uiState.value.shows.randomOrNull()?.imdbId
 
     private fun observeState() {
         // Single source of truth: libraryRepository via the top-level watchedIds StateFlow

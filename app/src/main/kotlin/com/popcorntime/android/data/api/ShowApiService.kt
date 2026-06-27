@@ -57,7 +57,7 @@ class ShowApiService @Inject constructor(private val client: HttpClient) {
             }.body<List<TvMazeShowDto>>()
                 .filter { if (isAnime) it.isAnimation() else !it.isAnimation() }
                 .let { shows ->
-                    if (filter.genre != "All")
+                    if (filter.genre != "All Genre")
                         shows.filter { filter.genre in it.genres }
                     else shows
                 }

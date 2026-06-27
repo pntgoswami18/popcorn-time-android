@@ -9,7 +9,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -38,13 +37,6 @@ fun MovieBrowserScreen(
     var showSearch by remember { mutableStateOf(false) }
 
     Scaffold(
-        floatingActionButton = {
-            FloatingActionButton(onClick = {
-                viewModel.pickRandom()?.let { imdbId -> onMovieClick(imdbId) }
-            }) {
-                Icon(Icons.Default.Shuffle, contentDescription = "Random movie")
-            }
-        },
         topBar = {
             TopAppBar(
                 title = {
@@ -126,6 +118,7 @@ private fun FilterBar(
         // Genre
         FilterChipDropdown(
             label = selectedGenre,
+            selected = selectedGenre != "All Genre",
             expanded = genreExpanded,
             onToggle = { genreExpanded = !genreExpanded },
             onDismiss = { genreExpanded = false },
@@ -141,6 +134,7 @@ private fun FilterBar(
         // Sort
         FilterChipDropdown(
             label = selectedSort.label,
+            selected = selectedSort != SortOption.TRENDING,
             expanded = sortExpanded,
             onToggle = { sortExpanded = !sortExpanded },
             onDismiss = { sortExpanded = false },
@@ -156,11 +150,12 @@ private fun FilterBar(
         // Quality
         FilterChipDropdown(
             label = selectedQuality,
+            selected = selectedQuality != "All Quality",
             expanded = qualityExpanded,
             onToggle = { qualityExpanded = !qualityExpanded },
             onDismiss = { qualityExpanded = false },
         ) {
-            listOf("All", "720p", "1080p", "2160p", "3D").forEach { q ->
+            listOf("All Quality", "720p", "1080p", "2160p", "3D").forEach { q ->
                 DropdownMenuItem(
                     text = { Text(q) },
                     onClick = { onQualitySelect(q); qualityExpanded = false },
@@ -173,6 +168,7 @@ private fun FilterBar(
 @Composable
 private fun FilterChipDropdown(
     label: String,
+    selected: Boolean,
     expanded: Boolean,
     onToggle: () -> Unit,
     onDismiss: () -> Unit,
@@ -180,7 +176,7 @@ private fun FilterChipDropdown(
 ) {
     Box {
         FilterChip(
-            selected = label != "All",
+            selected = selected,
             onClick = onToggle,
             label = { Text(label, maxLines = 1) },
             colors = FilterChipDefaults.filterChipColors(

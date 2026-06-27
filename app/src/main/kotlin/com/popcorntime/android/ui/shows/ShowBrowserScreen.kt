@@ -41,13 +41,6 @@ fun ShowBrowserScreen(
     val tabTitle = if (contentType == ContentType.SHOW) "Series" else "Anime"
 
     Scaffold(
-        floatingActionButton = {
-            FloatingActionButton(onClick = {
-                viewModel.pickRandom()?.let { imdbId -> onShowClick(imdbId) }
-            }) {
-                Icon(Icons.Default.Shuffle, contentDescription = "Random show")
-            }
-        },
         topBar = {
             TopAppBar(
                 title = {
@@ -122,7 +115,7 @@ private fun ShowFilterBar(
     ) {
         Box {
             FilterChip(
-                selected = selectedGenre != "All",
+                selected = selectedGenre != "All Genre",
                 onClick = { genreExpanded = true },
                 label = { Text(selectedGenre, maxLines = 1) },
             )
