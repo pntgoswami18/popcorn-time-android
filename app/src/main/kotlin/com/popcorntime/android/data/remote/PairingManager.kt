@@ -193,17 +193,20 @@ class PairingManager(
      */
     suspend fun confirm() {
         // Pre-check without holding the lock across the suspend point.
-        val clientName = synchronized(lock) {
+        // Capture the pairingId so we can verify it's still the *same* session
+        // after the suspend; a concurrent startPairing() could replace session.
+        val (clientName, capturedPairingId) = synchronized(lock) {
             expireIfNeeded()
             val s = session
             if (s == null || s.state != State.AWAITING_CONFIRMATION) return
-            s.clientName ?: "Paired device"
+            Pair(s.clientName ?: "Paired device", s.pairingId)
         }
         val token = issueToken(clientName)
         val staged = synchronized(lock) {
             expireIfNeeded()
             val s = session
-            if (s != null && s.state == State.AWAITING_CONFIRMATION) {
+            if (s != null && s.state == State.AWAITING_CONFIRMATION &&
+                s.pairingId == capturedPairingId) {
                 s.state = State.CONFIRMED
                 s.stagedToken = token
                 s.expiresAtMs = maxOf(s.expiresAtMs, clock() + TOKEN_PICKUP_GRACE_MS)

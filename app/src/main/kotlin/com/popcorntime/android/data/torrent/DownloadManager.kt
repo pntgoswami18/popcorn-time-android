@@ -237,7 +237,18 @@ class DownloadManager @Inject constructor(
     }
 
     fun deleteDownload(imdbId: String) {
+        // Signal any in-progress download to abort before touching files.
+        inFlightIds.remove(imdbId)
         scope.launch {
+            // Stop the torrent engine if it is actively downloading this item.
+            // Mirrors cancelDownload's CAS pattern so we never stop a stream
+            // that belongs to a different imdbId.
+            if (activeDownloadImdbId.compareAndSet(imdbId, null)) {
+                _activeImdbId.compareAndSet(imdbId, null)
+                if (engineStartedForImdbId.compareAndSet(imdbId, null)) {
+                    torrentEngine.stopCurrent()
+                }
+            }
             val entity = downloads.value.find { it.imdbId == imdbId }
             val root = downloadsRootDir()
             // New layout: every download lives in its own <root>/<imdbId> subdirectory.

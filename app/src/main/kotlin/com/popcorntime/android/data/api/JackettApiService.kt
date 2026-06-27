@@ -76,7 +76,7 @@ class JackettApiService @Inject constructor(private val client: HttpClient) {
 private fun String.detectQuality(): String {
     val fn = this.lowercase()
     return when {
-        "2160p" in fn || "4k" in fn || "uhd" in fn -> "4K"
+        "2160p" in fn || "4k" in fn || "uhd" in fn -> "2160p"
         "1080p" in fn -> "1080p"
         "720p" in fn -> "720p"
         "480p" in fn -> "480p"

@@ -159,8 +159,13 @@ private fun ShowGrid(
     val gridState = rememberLazyGridState()
     val shouldLoadMore by remember {
         derivedStateOf {
-            val last = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            last >= shows.size - 6
+            when {
+                shows.isEmpty() || isLoadingMore -> false
+                else -> {
+                    val last = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+                    last >= shows.size - 6
+                }
+            }
         }
     }
     LaunchedEffect(shouldLoadMore) { if (shouldLoadMore) onLoadMore() }

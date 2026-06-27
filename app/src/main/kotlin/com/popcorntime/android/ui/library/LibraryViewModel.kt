@@ -41,13 +41,16 @@ class LibraryViewModel @Inject constructor(
                 repository.observeWatched(),
                 repository.isTraktConnected(),
             ) { favs, watchlist, watched, traktConnected ->
-                _uiState.value.copy(
+                Triple(Triple(favs, watchlist, watched), traktConnected, Unit)
+            }.collect { (data, traktConnected, _) ->
+                val (favs, watchlist, watched) = data
+                _uiState.update { it.copy(
                     favourites = favs,
                     watchlist = watchlist,
                     watched = watched,
                     isTraktConnected = traktConnected,
-                )
-            }.collect { state -> _uiState.value = state }
+                ) }
+            }
         }
     }
 

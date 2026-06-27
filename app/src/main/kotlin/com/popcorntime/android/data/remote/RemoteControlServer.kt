@@ -75,28 +75,31 @@ class RemoteControlServer @Inject constructor(
     private val _isAlive = MutableStateFlow(false)
     val isAliveFlow: StateFlow<Boolean> = _isAlive.asStateFlow()
 
+    private val startStopLock = Any()
+
     // Keystore lookup / key generation and SSL context setup are blocking
     // I/O, so the whole start path runs on Dispatchers.IO.
     suspend fun startIfNotRunning(token: String) = withContext(Dispatchers.IO) {
-        if (!isAlive) {
-            cachedTokenRef.set(token)
-            // TLS only — never serve the API over cleartext HTTP. makeSecure
-            // just records the socket factory, so calling it before every
-            // start() keeps restart cycles secure too.
-            makeSecure(
-                tlsCertificateManager.createServerSocketFactory(),
-                tlsCertificateManager.enabledTlsProtocols().takeIf { it.isNotEmpty() },
-            )
-            start(SOCKET_READ_TIMEOUT, false)
-            // Launch the session-token collector only after start() succeeded —
-            // a throwing start() must not leak a long-lived collector.
+        synchronized(startStopLock) { if (isAlive) return@withContext }
+        cachedTokenRef.set(token)
+        // TLS only — never serve the API over cleartext HTTP. makeSecure
+        // just records the socket factory, so calling it before every
+        // start() keeps restart cycles secure too.
+        makeSecure(
+            tlsCertificateManager.createServerSocketFactory(),
+            tlsCertificateManager.enabledTlsProtocols().takeIf { it.isNotEmpty() },
+        )
+        start(SOCKET_READ_TIMEOUT, false)
+        // Launch the session-token collector only after start() succeeded —
+        // a throwing start() must not leak a long-lived collector.
+        synchronized(startStopLock) {
             sessionTokenJob?.cancel()
             sessionTokenJob = scope.launch {
                 tokenStore.observeSessionTokens().collect { sessionTokensRef.set(it) }
             }
-            _isAlive.value = isAlive
-            Timber.d("RemoteControlServer started on port $REMOTE_PORT (TLS)")
         }
+        _isAlive.value = true
+        Timber.d("RemoteControlServer started on port $REMOTE_PORT (TLS)")
     }
 
     fun stopIfRunning() {
@@ -145,6 +148,7 @@ class RemoteControlServer @Inject constructor(
         // any session token issued through QR pairing.
         val authHeader = session.headers["authorization"] ?: ""
         val expectedToken = cachedTokenRef.get()
+            ?.takeIf { it.isNotBlank() }
             ?: return newFixedLengthResponse(
                 Response.Status.SERVICE_UNAVAILABLE,
                 MIME_JSON,

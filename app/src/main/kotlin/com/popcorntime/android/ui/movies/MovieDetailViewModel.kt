@@ -67,6 +67,10 @@ class MovieDetailViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(MovieDetailUiState(isLoading = true))
     val uiState: StateFlow<MovieDetailUiState> = _uiState.asStateFlow()
 
+    private var toggleWatchedJob: kotlinx.coroutines.Job? = null
+    private var toggleBookmarkJob: kotlinx.coroutines.Job? = null
+    private var toggleWatchlistJob: kotlinx.coroutines.Job? = null
+
     init {
         // Keep the per-movie download state in sync with DownloadManager.
         viewModelScope.launch {
@@ -139,7 +143,8 @@ class MovieDetailViewModel @Inject constructor(
     }
 
     fun toggleWatched() {
-        viewModelScope.launch {
+        toggleWatchedJob?.cancel()
+        toggleWatchedJob = viewModelScope.launch {
             val movie = _uiState.value.movie ?: return@launch
             val wasWatched = _uiState.value.isWatched
             try {
@@ -153,7 +158,8 @@ class MovieDetailViewModel @Inject constructor(
     }
 
     fun toggleBookmark() {
-        viewModelScope.launch {
+        toggleBookmarkJob?.cancel()
+        toggleBookmarkJob = viewModelScope.launch {
             val movie = _uiState.value.movie ?: return@launch
             val wasBookmarked = _uiState.value.isBookmarked
             try {
@@ -166,7 +172,8 @@ class MovieDetailViewModel @Inject constructor(
     }
 
     fun toggleWatchlist() {
-        viewModelScope.launch {
+        toggleWatchlistJob?.cancel()
+        toggleWatchlistJob = viewModelScope.launch {
             val movie = _uiState.value.movie ?: return@launch
             val wasInWatchlist = _uiState.value.isInWatchlist
             try {
