@@ -1,6 +1,7 @@
 package com.popcorntime.android.data.repository
 
 import com.popcorntime.android.data.api.JackettApiService
+import com.popcorntime.android.data.api.NyaaApiService
 import com.popcorntime.android.data.api.ShowApiService
 import com.popcorntime.android.data.api.ShowDetailResult
 import com.popcorntime.android.data.api.dto.EztvTorrentDto
@@ -35,6 +36,7 @@ class ShowRepositoryImpl @Inject constructor(
     private val bookmarkedDao: BookmarkedDao,
     private val sourcePrefs: TorrentSourcePrefs,
     private val jackettApi: JackettApiService,
+    private val nyaaApi: NyaaApiService,
 ) : ShowRepository {
 
     override suspend fun getShows(filter: ShowFilter): Result<List<Show>> {
@@ -77,7 +79,7 @@ class ShowRepositoryImpl @Inject constructor(
                             val episode = match.groupValues[2].toIntOrNull() ?: continue
                             val quality = dto.title.lowercase().let { t ->
                                 when {
-                                    "2160p" in t || "4k" in t || "uhd" in t -> "4K"
+                                    "2160p" in t || "4k" in t || "uhd" in t -> "2160p"
                                     "1080p" in t -> "1080p"
                                     "720p" in t -> "720p"
                                     "480p" in t -> "480p"
@@ -93,6 +95,21 @@ class ShowRepositoryImpl @Inject constructor(
                         }
                         return Result.success(result.toDomain(torrentIndex))
                     }
+                }
+            }
+            // For anime, supplement EZTV (which has poor anime coverage) with Nyaa.
+            if (type == ContentType.ANIME) {
+                val nyaaIndex = try {
+                    withTimeout(20_000L) { nyaaApi.fetchTorrentIndex(result.show.name) }
+                } catch (e: TimeoutCancellationException) {
+                    Timber.w("ShowRepositoryImpl: Nyaa fetch timed out for ${result.show.name}")
+                    emptyMap()
+                }
+                if (nyaaIndex.isNotEmpty()) {
+                    // Merge Nyaa on top of EZTV: prefer whichever has more seeds per slot.
+                    val eztvIndex = buildTorrentIndex(result.eztvTorrents)
+                    val merged = mergeTorrentIndexes(eztvIndex, nyaaIndex)
+                    return Result.success(result.toDomain(merged))
                 }
             }
             Result.success(result.toDomain())
@@ -190,13 +207,14 @@ private fun TvMazeEpisodeDto.toDomain(
 ): Episode {
     val epTorrents = torrentIndex[season]?.get(number!!) ?: emptyMap()
     return Episode(
-        tvdbId    = id,
-        season    = season,
-        episode   = number!!,
-        title     = name,
-        overview  = summary?.stripHtml() ?: "",
-        firstAired = airdate.toUnixSeconds(),
-        torrents  = epTorrents,
+        tvdbId       = id,
+        season       = season,
+        episode      = number!!,
+        title        = name,
+        overview     = summary?.stripHtml() ?: "",
+        firstAired   = airdate.toUnixSeconds(),
+        thumbnailUrl = image?.medium ?: image?.original ?: "",
+        torrents     = epTorrents,
     )
 }
 
@@ -234,6 +252,35 @@ private fun buildTorrentIndex(
     return result
 }
 
+/**
+ * Merges two torrent indexes, keeping the higher-seeded entry per
+ * (season, episode, quality) slot.
+ */
+private fun mergeTorrentIndexes(
+    base: Map<Int, Map<Int, Map<String, EpisodeTorrent>>>,
+    overlay: Map<Int, Map<Int, Map<String, EpisodeTorrent>>>,
+): Map<Int, Map<Int, Map<String, EpisodeTorrent>>> {
+    val result = mutableMapOf<Int, MutableMap<Int, MutableMap<String, EpisodeTorrent>>>()
+    for ((season, byEp) in base) {
+        for ((ep, byQ) in byEp) {
+            for ((q, t) in byQ) {
+                result.getOrPut(season) { mutableMapOf() }.getOrPut(ep) { mutableMapOf() }[q] = t
+            }
+        }
+    }
+    for ((season, byEp) in overlay) {
+        for ((ep, byQ) in byEp) {
+            for ((q, t) in byQ) {
+                val existing = result.getOrPut(season) { mutableMapOf() }.getOrPut(ep) { mutableMapOf() }[q]
+                if (existing == null || t.seeds > existing.seeds) {
+                    result.getOrPut(season) { mutableMapOf() }.getOrPut(ep) { mutableMapOf() }[q] = t
+                }
+            }
+        }
+    }
+    return result
+}
+
 // ── String utilities ──────────────────────────────────────────────────────────
 
 private fun String.stripHtml(): String =
@@ -246,7 +293,7 @@ private fun String.slugify(): String =
 private fun String.detectQuality(): String {
     val fn = this.lowercase()
     return when {
-        "2160p" in fn || "4k" in fn || "uhd" in fn -> "4K"
+        "2160p" in fn || "4k" in fn || "uhd" in fn -> "2160p"
         "1080p" in fn                               -> "1080p"
         "720p"  in fn                               -> "720p"
         "480p"  in fn                               -> "480p"

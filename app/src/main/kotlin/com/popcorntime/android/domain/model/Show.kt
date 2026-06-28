@@ -31,6 +31,7 @@ data class Episode(
     val title: String,
     val overview: String,
     val firstAired: Long,
+    val thumbnailUrl: String,
     val torrents: Map<String, EpisodeTorrent>,  // quality -> torrent
 )
 

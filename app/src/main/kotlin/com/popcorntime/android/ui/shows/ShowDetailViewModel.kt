@@ -25,11 +25,17 @@ data class ShowDetailUiState(
     val seasons: List<Season> = emptyList(),
     val selectedSeason: Int = 1,
     val isLoading: Boolean = true,
+    /** True while the detail/episode fetch is in-flight (even when cached show is already shown). */
+    val isEpisodesLoading: Boolean = true,
     val error: String? = null,
+    /** Non-null when the episodes fetch failed but cached show data is still displayed. */
+    val episodesError: String? = null,
     val isWatched: Boolean = false,
     val isBookmarked: Boolean = false,
     val isInWatchlist: Boolean = false,
     val allWatched: Boolean = false,
+    /** Composite keys "imdbId_sXeY" for episodes the user has watched. */
+    val watchedEpisodeKeys: Set<String> = emptySet(),
 )
 
 @HiltViewModel
@@ -49,23 +55,34 @@ class ShowDetailViewModel @Inject constructor(
     init { loadDetail() }
 
     private fun loadDetail() {
-        // Use cache first for instant display, then fetch full detail (with episodes)
+        // Show cached summary immediately so the header renders without a network round-trip.
         val cached = ShowCache.get(imdbId)
         if (cached != null) {
             val seasons = cached.seasons()
             _uiState.update {
-                it.copy(show = cached, seasons = seasons,
-                    selectedSeason = seasons.firstOrNull()?.number ?: 1, isLoading = false)
+                it.copy(
+                    show = cached,
+                    seasons = seasons,
+                    selectedSeason = seasons.firstOrNull()?.number ?: 1,
+                    isLoading = false,
+                    // isEpisodesLoading stays true — full detail still in-flight
+                )
             }
         }
 
         viewModelScope.launch {
-            // Load watchlist, favourite, and watched state
             val inWatchlist = libraryRepository.isInWatchlist(imdbId)
             val isFavourited = libraryRepository.isFavourited(imdbId)
             val isWatched = libraryRepository.isWatched(imdbId)
             val watchedIds = libraryRepository.observeWatched().first().map { it.imdbId }.toSet()
-            _uiState.update { it.copy(isInWatchlist = inWatchlist, isBookmarked = isFavourited, isWatched = isWatched) }
+            _uiState.update {
+                it.copy(
+                    isInWatchlist = inWatchlist,
+                    isBookmarked = isFavourited,
+                    isWatched = isWatched,
+                    watchedEpisodeKeys = watchedIds,
+                )
+            }
 
             repository.getShowDetail(imdbId, contentType).fold(
                 onSuccess = { show ->
@@ -74,19 +91,37 @@ class ShowDetailViewModel @Inject constructor(
                     val epKeys = show.episodes.map { ep -> "${show.imdbId}_s${ep.season}e${ep.episode}" }
                     val allWatched = epKeys.isNotEmpty() && epKeys.all { it in watchedIds }
                     _uiState.update {
-                        it.copy(show = show, seasons = seasons,
-                            selectedSeason = seasons.firstOrNull()?.number ?: 1, isLoading = false,
-                            allWatched = allWatched)
+                        it.copy(
+                            show = show,
+                            seasons = seasons,
+                            selectedSeason = seasons.firstOrNull()?.number ?: 1,
+                            isLoading = false,
+                            isEpisodesLoading = false,
+                            episodesError = null,
+                            allWatched = allWatched,
+                        )
                     }
                 },
                 onFailure = { e ->
                     if (_uiState.value.show == null) {
-                        _uiState.update { it.copy(isLoading = false, error = e.message) }
+                        _uiState.update { it.copy(isLoading = false, isEpisodesLoading = false, error = e.message) }
+                    } else {
+                        // Cached show is displayed — surface the error inline in the episodes section.
+                        _uiState.update {
+                            it.copy(
+                                isEpisodesLoading = false,
+                                episodesError = e.message ?: "Failed to load episodes",
+                            )
+                        }
                     }
-                    // If we already have cached data, don't show error
                 },
             )
         }
+    }
+
+    fun retryEpisodes() {
+        _uiState.update { it.copy(isEpisodesLoading = true, episodesError = null) }
+        loadDetail()
     }
 
     fun selectSeason(number: Int) {
@@ -122,6 +157,29 @@ class ShowDetailViewModel @Inject constructor(
                 libraryRepository.addToWatchlist(imdbId, show.toLibraryItem())
             }
             _uiState.update { it.copy(isInWatchlist = !it.isInWatchlist) }
+        }
+    }
+
+    fun toggleEpisodeWatched(episode: com.popcorntime.android.domain.model.Episode) {
+        val show = _uiState.value.show ?: return
+        val key = "${show.imdbId}_s${episode.season}e${episode.episode}"
+        viewModelScope.launch {
+            val isCurrentlyWatched = key in _uiState.value.watchedEpisodeKeys
+            val item = LibraryItem(
+                imdbId = key,
+                title = "${show.title} S${episode.season}E${episode.episode}",
+                posterUrl = show.posterUrl,
+                year = show.year,
+                contentType = if (contentType == ContentType.ANIME) LibraryContentType.ANIME else LibraryContentType.SHOW,
+                addedAt = System.currentTimeMillis(),
+            )
+            if (isCurrentlyWatched) {
+                libraryRepository.unmarkWatched(key)
+                _uiState.update { it.copy(watchedEpisodeKeys = it.watchedEpisodeKeys - key) }
+            } else {
+                libraryRepository.markWatched(key, item)
+                _uiState.update { it.copy(watchedEpisodeKeys = it.watchedEpisodeKeys + key) }
+            }
         }
     }
 

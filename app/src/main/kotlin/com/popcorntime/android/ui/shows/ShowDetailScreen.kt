@@ -10,6 +10,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.automirrored.filled.PlaylistAddCheck
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -31,6 +33,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
+@Suppress("UNUSED_PARAMETER")
 @Composable
 fun ShowDetailScreen(
     imdbId: String,
@@ -69,7 +72,7 @@ fun ShowDetailScreen(
                         }
                         IconButton(onClick = viewModel::toggleWatchlist) {
                             Icon(
-                                if (state.isInWatchlist) Icons.Default.PlaylistAddCheck else Icons.Default.PlaylistAdd,
+                                if (state.isInWatchlist) Icons.AutoMirrored.Filled.PlaylistAddCheck else Icons.AutoMirrored.Filled.PlaylistAdd,
                                 "Watchlist",
                                 tint = if (state.isInWatchlist) MaterialTheme.colorScheme.primary
                                        else LocalContentColor.current,
@@ -95,10 +98,15 @@ fun ShowDetailScreen(
                 seasons = state.seasons,
                 selectedSeason = state.selectedSeason,
                 allWatched = state.allWatched,
+                isEpisodesLoading = state.isEpisodesLoading,
+                episodesError = state.episodesError,
+                watchedEpisodeKeys = state.watchedEpisodeKeys,
                 modifier = Modifier.padding(padding),
                 onSeasonSelect = viewModel::selectSeason,
                 onEpisodePlay = onEpisodePlay,
                 onMarkAllWatched = viewModel::markAllWatched,
+                onToggleEpisodeWatched = viewModel::toggleEpisodeWatched,
+                onRetryEpisodes = viewModel::retryEpisodes,
             )
         }
     }
@@ -110,10 +118,15 @@ private fun ShowDetailContent(
     seasons: List<Season>,
     selectedSeason: Int,
     allWatched: Boolean = false,
+    isEpisodesLoading: Boolean = false,
+    episodesError: String? = null,
+    watchedEpisodeKeys: Set<String> = emptySet(),
     modifier: Modifier = Modifier,
     onSeasonSelect: (Int) -> Unit,
     onEpisodePlay: (String, Int, Int, String) -> Unit,
     onMarkAllWatched: () -> Unit = {},
+    onToggleEpisodeWatched: (Episode) -> Unit = {},
+    onRetryEpisodes: () -> Unit = {},
 ) {
     LazyColumn(modifier = modifier) {
         // Hero backdrop
@@ -200,7 +213,7 @@ private fun ShowDetailContent(
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = onMarkAllWatched,
-                    enabled = !allWatched,
+                    enabled = !allWatched && !isEpisodesLoading,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Icon(Icons.Default.Visibility, contentDescription = null,
@@ -212,39 +225,91 @@ private fun ShowDetailContent(
             }
         }
 
-        // Season tabs
+        // Season tabs / loading / error
         item {
-            Row(
-                modifier = Modifier
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                seasons.forEach { season ->
-                    FilterChip(
-                        selected = selectedSeason == season.number,
-                        onClick = { onSeasonSelect(season.number) },
-                        label = { Text("Season ${season.number}") },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primary,
-                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-                        ),
+            when {
+                isEpisodesLoading -> {
+                    Column {
+                        LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Loading episodes…",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
+                        Spacer(Modifier.height(16.dp))
+                    }
+                }
+                episodesError != null -> {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(Icons.Default.Warning, contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                            Text("Could not load episodes",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error)
+                        }
+                        TextButton(onClick = onRetryEpisodes) { Text("Retry") }
+                    }
+                }
+                seasons.isEmpty() -> {
+                    Text(
+                        "No episode data available",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     )
                 }
+                else -> {
+                    Row(
+                        modifier = Modifier
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        seasons.forEach { season ->
+                            FilterChip(
+                                selected = selectedSeason == season.number,
+                                onClick = { onSeasonSelect(season.number) },
+                                label = { Text("Season ${season.number}") },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                                ),
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
             }
-            Spacer(Modifier.height(8.dp))
         }
 
         // Episodes for selected season
-        val currentSeason = seasons.find { it.number == selectedSeason }
-        items(currentSeason?.episodes ?: emptyList(), key = { it.tvdbId }) { episode ->
-            EpisodeRow(
-                episode = episode,
-                onClick = { quality ->
-                    onEpisodePlay(show.imdbId, episode.season, episode.episode, quality)
-                },
-            )
-            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+        if (!isEpisodesLoading && episodesError == null) {
+            val currentSeason = seasons.find { it.number == selectedSeason }
+            items(currentSeason?.episodes ?: emptyList(), key = { it.tvdbId }) { episode ->
+                val epKey = "${show.imdbId}_s${episode.season}e${episode.episode}"
+                EpisodeRow(
+                    episode = episode,
+                    isWatched = epKey in watchedEpisodeKeys,
+                    onToggleWatched = { onToggleEpisodeWatched(episode) },
+                    onClick = { quality ->
+                        onEpisodePlay(show.imdbId, episode.season, episode.episode, quality)
+                    },
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+            }
         }
 
         item { Spacer(Modifier.height(24.dp)) }
@@ -252,7 +317,12 @@ private fun ShowDetailContent(
 }
 
 @Composable
-private fun EpisodeRow(episode: Episode, onClick: (quality: String) -> Unit) {
+private fun EpisodeRow(
+    episode: Episode,
+    isWatched: Boolean,
+    onToggleWatched: () -> Unit,
+    onClick: (quality: String) -> Unit,
+) {
     var showQualityPicker by remember { mutableStateOf(false) }
     val availableQualities = episode.torrents.keys
         .filter { it != "0" }
@@ -262,22 +332,53 @@ private fun EpisodeRow(episode: Episode, onClick: (quality: String) -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable(enabled = availableQualities.isNotEmpty()) { showQualityPicker = true }
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Episode thumbnail
+        if (episode.thumbnailUrl.isNotBlank()) {
+            AsyncImage(
+                model = episode.thumbnailUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(width = 100.dp, height = 60.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(width = 100.dp, height = 60.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Default.Tv, contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                    modifier = Modifier.size(24.dp))
+            }
+        }
+
+        // Text info
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "E${episode.episode} · ${episode.title}",
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                color = if (isWatched)
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                else
+                    MaterialTheme.colorScheme.onSurface,
             )
             if (episode.overview.isNotBlank()) {
                 Text(
                     text = episode.overview,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                        alpha = if (isWatched) 0.4f else 1f),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -291,13 +392,31 @@ private fun EpisodeRow(episode: Episode, onClick: (quality: String) -> Unit) {
                 )
             }
         }
-        if (availableQualities.isNotEmpty()) {
-            Icon(Icons.Default.PlayCircle, contentDescription = "Play",
-                tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
-        } else {
-            Icon(Icons.Default.CloudOff, contentDescription = "No torrents",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                modifier = Modifier.size(20.dp))
+
+        // Action icons column
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            // Watched toggle
+            IconButton(onClick = onToggleWatched, modifier = Modifier.size(32.dp)) {
+                Icon(
+                    imageVector = if (isWatched) Icons.Default.CheckCircle else Icons.Default.CheckCircle,
+                    contentDescription = if (isWatched) "Mark unwatched" else "Mark watched",
+                    tint = if (isWatched) MaterialTheme.colorScheme.primary
+                           else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            // Play / no-source indicator
+            if (availableQualities.isNotEmpty()) {
+                Icon(Icons.Default.PlayCircle, contentDescription = "Play",
+                    tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+            } else {
+                Icon(Icons.Default.CloudOff, contentDescription = "No torrents",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                    modifier = Modifier.size(20.dp))
+            }
         }
     }
 
@@ -337,4 +456,4 @@ private fun EpisodeRow(episode: Episode, onClick: (quality: String) -> Unit) {
     }
 }
 
-private fun qualityRank(q: String) = when (q) { "1080p" -> 3; "720p" -> 2; "480p" -> 1; else -> 0 }
+private fun qualityRank(q: String) = when (q) { "2160p" -> 4; "1080p" -> 3; "720p" -> 2; "480p" -> 1; else -> 0 }
