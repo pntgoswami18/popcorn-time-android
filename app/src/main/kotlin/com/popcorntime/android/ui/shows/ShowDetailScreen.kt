@@ -1,5 +1,6 @@
 package com.popcorntime.android.ui.shows
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -18,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -229,20 +231,24 @@ private fun ShowDetailContent(
         item {
             when {
                 isEpisodesLoading -> {
-                    Column {
-                        LinearProgressIndicator(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "Loading episodes…",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                        )
-                        Spacer(Modifier.height(16.dp))
+                    // Shimmer season-tab row
+                    val shimmer = rememberShimmerBrush()
+                    Row(
+                        modifier = Modifier
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        repeat(3) {
+                            Box(
+                                modifier = Modifier
+                                    .width(80.dp)
+                                    .height(32.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(shimmer),
+                            )
+                        }
                     }
+                    Spacer(Modifier.height(8.dp))
                 }
                 episodesError != null -> {
                     Row(
@@ -292,6 +298,14 @@ private fun ShowDetailContent(
                     }
                     Spacer(Modifier.height(8.dp))
                 }
+            }
+        }
+
+        // Skeleton episode rows while loading
+        if (isEpisodesLoading) {
+            items(5) {
+                EpisodeRowSkeleton()
+                HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
             }
         }
 
@@ -457,3 +471,97 @@ private fun EpisodeRow(
 }
 
 private fun qualityRank(q: String) = when (q) { "2160p" -> 4; "1080p" -> 3; "720p" -> 2; "480p" -> 1; else -> 0 }
+
+@Composable
+private fun rememberShimmerBrush(): Brush {
+    val base = MaterialTheme.colorScheme.surfaceVariant
+    val highlight = MaterialTheme.colorScheme.surface
+
+    val transition = rememberInfiniteTransition(label = "shimmer")
+    val offset by transition.animateFloat(
+        initialValue = -600f,
+        targetValue = 1200f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "shimmer_offset",
+    )
+    return Brush.linearGradient(
+        colors = listOf(base, highlight, base),
+        start = Offset(offset, 0f),
+        end = Offset(offset + 600f, 0f),
+    )
+}
+
+@Composable
+private fun EpisodeRowSkeleton() {
+    val shimmer = rememberShimmerBrush()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Thumbnail placeholder
+        Box(
+            modifier = Modifier
+                .size(width = 100.dp, height = 60.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(shimmer),
+        )
+        // Text placeholders
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.7f)
+                    .height(14.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(shimmer),
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(10.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(shimmer),
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.85f)
+                    .height(10.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(shimmer),
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.35f)
+                    .height(9.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(shimmer),
+            )
+        }
+        // Icon column placeholder
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(20.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(shimmer),
+            )
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(shimmer),
+            )
+        }
+    }
+}
