@@ -21,8 +21,6 @@ class NyaaApiService @Inject constructor(private val client: HttpClient) {
 
     companion object {
         private const val NYAA = "https://nyaa.si"
-        /** Max results per query (Nyaa RSS hard cap). */
-        private const val PAGE_SIZE = 75
     }
 
     /**
@@ -43,8 +41,8 @@ class NyaaApiService @Inject constructor(private val client: HttpClient) {
         }
 
         val sePattern = Regex("S(\\d{1,2})E(\\d{1,3})", RegexOption.IGNORE_CASE)
-        // Also match the common anime format " - 01 " or "[01]"
-        val epOnlyPattern = Regex("(?:[-\\s\\[])0*(\\d{1,3})(?:[\\]\\s]|$)")
+        // Match " - 12 " or "[12]" style anime episode numbers; requires dash/bracket + 2+ digits to avoid false positives
+        val epOnlyPattern = Regex("(?:[-\\[])0*(\\d{2,3})(?:[\\]\\s._-]|$)")
 
         val index = mutableMapOf<Int, MutableMap<Int, MutableMap<String, EpisodeTorrent>>>()
 
@@ -100,7 +98,15 @@ class NyaaApiService @Inject constructor(private val client: HttpClient) {
             val title    = block.xmlText("title") ?: continue
             val link     = block.xmlText("link") ?: ""
             val magnet   = block.xmlText("nyaa:infoHash")
-                ?.let { hash -> "magnet:?xt=urn:btih:$hash" } ?: ""
+                ?.let { hash ->
+                    buildString {
+                        append("magnet:?xt=urn:btih:").append(hash)
+                        append("&dn=").append(java.net.URLEncoder.encode(title, "UTF-8"))
+                        append("&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce")
+                        append("&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce")
+                        append("&tr=udp%3A%2F%2Ftracker.openbittorrent.com%3A6969%2Fannounce")
+                    }
+                } ?: ""
             val seeders  = block.xmlText("nyaa:seeders")?.toIntOrNull() ?: 0
             val leechers = block.xmlText("nyaa:leechers")?.toIntOrNull() ?: 0
             items += NyaaRssItem(title, link, magnet, seeders, leechers)
@@ -112,7 +118,9 @@ class NyaaApiService @Inject constructor(private val client: HttpClient) {
         val start = indexOf("<$tag>").takeIf { it >= 0 }?.plus("<$tag>".length) ?: return null
         val end   = indexOf("</$tag>", start).takeIf { it >= 0 } ?: return null
         return substring(start, end).trim()
-            .removePrefix("<![CDATA[").removeSuffix("]]>").trim()
+            .replace(Regex("^\\s*<!\\[CDATA\\[\\s*"), "")
+            .replace(Regex("\\s*]]>\\s*$"), "")
+            .trim()
             .ifBlank { null }
     }
 }

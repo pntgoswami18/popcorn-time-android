@@ -72,7 +72,7 @@ class ShowRepositoryImpl @Inject constructor(
                     }
                     if (jackettResults.isNotEmpty()) {
                         val sePattern = Regex("S(\\d{2})E(\\d{2})", RegexOption.IGNORE_CASE)
-                        val torrentIndex = mutableMapOf<Int, MutableMap<Int, MutableMap<String, EpisodeTorrent>>>()
+                        val jackettIndex = mutableMapOf<Int, MutableMap<Int, MutableMap<String, EpisodeTorrent>>>()
                         for (dto in jackettResults) {
                             val match = sePattern.find(dto.title) ?: continue
                             val season = match.groupValues[1].toIntOrNull() ?: continue
@@ -87,13 +87,25 @@ class ShowRepositoryImpl @Inject constructor(
                                 }
                             }
                             val ep = dto.toEpisodeTorrent()
-                            val byQuality = torrentIndex.getOrPut(season) { mutableMapOf() }.getOrPut(episode) { mutableMapOf() }
+                            val byQuality = jackettIndex.getOrPut(season) { mutableMapOf() }.getOrPut(episode) { mutableMapOf() }
                             val existing = byQuality[quality]
                             if (existing == null || ep.seeds > existing.seeds) {
                                 byQuality[quality] = ep
                             }
                         }
-                        return Result.success(result.toDomain(torrentIndex))
+                        // For non-anime shows, Jackett is sufficient; return early.
+                        if (type != ContentType.ANIME) {
+                            return Result.success(result.toDomain(jackettIndex))
+                        }
+                        // For anime, also run Nyaa and merge (Jackett may miss fansubs).
+                        val nyaaIndex = try {
+                            withTimeout(20_000L) { nyaaApi.fetchTorrentIndex(result.show.name) }
+                        } catch (e: TimeoutCancellationException) {
+                            Timber.w("ShowRepositoryImpl: Nyaa fetch timed out for ${result.show.name}")
+                            emptyMap()
+                        }
+                        val merged = if (nyaaIndex.isNotEmpty()) mergeTorrentIndexes(jackettIndex, nyaaIndex) else jackettIndex
+                        return Result.success(result.toDomain(merged))
                     }
                 }
             }
@@ -205,11 +217,12 @@ private fun ShowDetailResult.toDomain(
 private fun TvMazeEpisodeDto.toDomain(
     torrentIndex: Map<Int, Map<Int, Map<String, EpisodeTorrent>>>,
 ): Episode {
-    val epTorrents = torrentIndex[season]?.get(number!!) ?: emptyMap()
+    val epNum = number ?: 0
+    val epTorrents = torrentIndex[season]?.get(epNum) ?: emptyMap()
     return Episode(
         tvdbId       = id,
         season       = season,
-        episode      = number!!,
+        episode      = epNum,
         title        = name,
         overview     = summary?.stripHtml() ?: "",
         firstAired   = airdate.toUnixSeconds(),
@@ -289,7 +302,7 @@ private fun String.stripHtml(): String =
 private fun String.slugify(): String =
     lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
 
-/** Infer video quality from an EZTV filename. */
+/** Infer video quality from an EZTV filename. Matches Nyaa/Jackett quality keys. */
 private fun String.detectQuality(): String {
     val fn = this.lowercase()
     return when {
@@ -297,7 +310,13 @@ private fun String.detectQuality(): String {
         "1080p" in fn                               -> "1080p"
         "720p"  in fn                               -> "720p"
         "480p"  in fn                               -> "480p"
-        else                                        -> "SD"
+        else                                        -> "720p"
+    }
+}
+
+private val AIRDATE_FORMAT = ThreadLocal.withInitial {
+    java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).also {
+        it.timeZone = java.util.TimeZone.getTimeZone("UTC")
     }
 }
 
@@ -305,9 +324,6 @@ private fun String.detectQuality(): String {
 private fun String.toUnixSeconds(): Long {
     if (isBlank()) return 0L
     return try {
-        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).apply {
-            timeZone = java.util.TimeZone.getTimeZone("UTC")
-        }
-        sdf.parse(this)?.time?.div(1000) ?: 0L
+        AIRDATE_FORMAT.get()!!.parse(this)?.time?.div(1000) ?: 0L
     } catch (_: Exception) { 0L }
 }

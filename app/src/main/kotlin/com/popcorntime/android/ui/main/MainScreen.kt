@@ -58,14 +58,15 @@ fun MainScreen(isTv: Boolean = false) {
     val showBottomBar = currentDest?.route?.let { route ->
         !route.startsWith("player/") &&
             !route.startsWith("player_local/") &&
-            route != "player_local" &&
             route != "settings" &&
             !route.startsWith("settings/")
     } != false
 
     if (isTv) {
         // TV: PermanentNavigationDrawer side nav — only when player is not shown
-        var selectedTab by remember { mutableStateOf<Tab>(Tab.Movies) }
+        val selectedTab = Tab.all.firstOrNull { tab ->
+            currentDest?.hierarchy?.any { it.route == tab.route } == true
+        } ?: Tab.Movies
         if (showBottomBar) {
             PermanentNavigationDrawer(
                 drawerContent = {
@@ -76,7 +77,6 @@ fun MainScreen(isTv: Boolean = false) {
                                 label = { Text(tab.label) },
                                 selected = selectedTab == tab,
                                 onClick = {
-                                    selectedTab = tab
                                     navController.navigate(tab.route) {
                                         popUpTo(navController.graph.findStartDestination().id) {
                                             saveState = true
@@ -193,8 +193,8 @@ private fun MainNavHost(navController: NavHostController, modifier: Modifier = M
             ShowDetailScreen(
                 imdbId = imdbId,
                 onBack = { navController.popBackStack() },
-                onEpisodePlay = { _, season, episode, quality ->
-                    navController.navigate("player/${Uri.encode(imdbId)}/${Uri.encode(quality)}?season=$season&episode=$episode&contentType=${Uri.encode(showContentType)}")
+                onEpisodePlay = { episodeImdbId, season, episode, quality ->
+                    navController.navigate("player/${Uri.encode(episodeImdbId)}/${Uri.encode(quality)}?season=$season&episode=$episode&contentType=${Uri.encode(showContentType)}")
                 },
                 onPlayDownloaded = { uri ->
                     navController.navigate("player_local/${Uri.encode(uri)}")

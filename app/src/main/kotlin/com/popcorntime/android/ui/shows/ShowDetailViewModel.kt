@@ -15,11 +15,11 @@ import com.popcorntime.android.domain.model.seasons
 import com.popcorntime.android.domain.repository.LibraryRepository
 import com.popcorntime.android.domain.repository.ShowRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -55,6 +55,8 @@ data class ShowDetailUiState(
     val episodeDownloads: Map<String, EpisodeDownloadState> = emptyMap(),
     /** One-shot message to surface in a snackbar (e.g. concurrent-download rejection). */
     val transientMessage: String? = null,
+    /** Incremented each time transientMessage is set so LaunchedEffect re-fires even for identical text. */
+    val transientMessageVersion: Int = 0,
 )
 
 // ── ViewModel ─────────────────────────────────────────────────────────────────
@@ -74,9 +76,12 @@ class ShowDetailViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(ShowDetailUiState())
     val uiState: StateFlow<ShowDetailUiState> = _uiState.asStateFlow()
 
+    private var loadDetailJob: Job? = null
+
     init {
         loadDetail()
         observeDownloads()
+        observeWatchedEpisodes()
     }
 
     // ── Data loading ──────────────────────────────────────────────────────────
@@ -96,17 +101,16 @@ class ShowDetailViewModel @Inject constructor(
             }
         }
 
-        viewModelScope.launch {
+        loadDetailJob?.cancel()
+        loadDetailJob = viewModelScope.launch {
             val inWatchlist = libraryRepository.isInWatchlist(imdbId)
             val isFavourited = libraryRepository.isFavourited(imdbId)
             val isWatched = libraryRepository.isWatched(imdbId)
-            val watchedIds = libraryRepository.observeWatched().first().map { it.imdbId }.toSet()
             _uiState.update {
                 it.copy(
                     isInWatchlist = inWatchlist,
                     isBookmarked = isFavourited,
                     isWatched = isWatched,
-                    watchedEpisodeKeys = watchedIds,
                 )
             }
 
@@ -114,17 +118,15 @@ class ShowDetailViewModel @Inject constructor(
                 onSuccess = { show ->
                     ShowCache.put(show)
                     val seasons = show.seasons()
-                    val epKeys = show.episodes.map { ep -> "${show.imdbId}_s${ep.season}e${ep.episode}" }
-                    val allWatched = epKeys.isNotEmpty() && epKeys.all { it in watchedIds }
-                    _uiState.update {
-                        it.copy(
+                    _uiState.update { state ->
+                        state.copy(
                             show = show,
                             seasons = seasons,
                             selectedSeason = seasons.firstOrNull()?.number ?: 1,
                             isLoading = false,
                             isEpisodesLoading = false,
                             episodesError = null,
-                            allWatched = allWatched,
+                            allWatched = computeAllWatched(show, state.watchedEpisodeKeys),
                         )
                     }
                 },
@@ -142,6 +144,26 @@ class ShowDetailViewModel @Inject constructor(
                 },
             )
         }
+    }
+
+    private fun observeWatchedEpisodes() {
+        viewModelScope.launch {
+            libraryRepository.observeWatched().collect { items ->
+                val keys = items.map { it.imdbId }.toSet()
+                _uiState.update { state ->
+                    state.copy(
+                        watchedEpisodeKeys = keys,
+                        allWatched = computeAllWatched(state.show, keys),
+                    )
+                }
+            }
+        }
+    }
+
+    private fun computeAllWatched(show: Show?, watchedKeys: Set<String>): Boolean {
+        if (show == null) return false
+        val epKeys = show.episodes.map { ep -> "${show.imdbId}_s${ep.season}e${ep.episode}" }
+        return epKeys.isNotEmpty() && epKeys.all { it in watchedKeys }
     }
 
     // ── Download observation ──────────────────────────────────────────────────
@@ -177,7 +199,7 @@ class ShowDetailViewModel @Inject constructor(
 
     fun retryEpisodes() {
         _uiState.update { it.copy(isEpisodesLoading = true, episodesError = null) }
-        loadDetail()
+        loadDetail()  // cancels previous job internally
     }
 
     fun selectSeason(number: Int) {
@@ -196,7 +218,10 @@ class ShowDetailViewModel @Inject constructor(
             quality = quality,
         )
         if (!started) {
-            _uiState.update { it.copy(transientMessage = "Another download is already in progress") }
+            _uiState.update { it.copy(
+                transientMessage = "Another download is already in progress",
+                transientMessageVersion = it.transientMessageVersion + 1,
+            ) }
         }
     }
 
@@ -270,8 +295,10 @@ class ShowDetailViewModel @Inject constructor(
     fun markAllWatched() {
         viewModelScope.launch {
             val show = _uiState.value.show ?: return@launch
+            val allKeys = mutableSetOf<String>()
             show.episodes.forEach { ep ->
                 val epKey = "${show.imdbId}_s${ep.season}e${ep.episode}"
+                allKeys += epKey
                 val epItem = LibraryItem(
                     imdbId = epKey,
                     title = "${show.title} S${ep.season}E${ep.episode}",
@@ -282,7 +309,11 @@ class ShowDetailViewModel @Inject constructor(
                 )
                 libraryRepository.markWatched(epKey, epItem)
             }
-            _uiState.update { it.copy(allWatched = true) }
+            // Immediate optimistic update; observeWatchedEpisodes will confirm asynchronously
+            _uiState.update { it.copy(
+                allWatched = true,
+                watchedEpisodeKeys = it.watchedEpisodeKeys + allKeys,
+            ) }
         }
     }
 

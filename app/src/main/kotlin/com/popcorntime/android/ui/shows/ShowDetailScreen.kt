@@ -51,7 +51,7 @@ fun ShowDetailScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    LaunchedEffect(state.transientMessage) {
+    LaunchedEffect(state.transientMessageVersion) {
         state.transientMessage?.let {
             snackbarHostState.showSnackbar(it)
             viewModel.consumeTransientMessage()
@@ -167,20 +167,20 @@ private fun ShowDetailContent(
             episode = episode,
             downloadState = dlState,
             onStream = { quality ->
-                sheetEpisode = null
                 onEpisodePlay(show.imdbId, episode.season, episode.episode, quality)
+                sheetEpisode = null
             },
             onDownload = { quality ->
-                sheetEpisode = null
                 onStartDownload(episode, quality)
+                sheetEpisode = null
             },
             onCancelDownload = {
-                sheetEpisode = null
                 onCancelDownload(episode)
+                sheetEpisode = null
             },
             onPlayDownloaded = { uri ->
-                sheetEpisode = null
                 onPlayDownloaded(uri)
+                sheetEpisode = null
             },
             onDismiss = { sheetEpisode = null },
         )
