@@ -370,7 +370,14 @@ class PlayerViewModel @Inject constructor(
 
         viewModelScope.launch {
             val metadata = buildLibraryMetadata(completedImdbId, completedSeason, completedEpisode, completedQuality, completedContentType)
-            if (metadata != null) libraryRepository.markWatched(completedImdbId, metadata)
+            if (metadata != null) {
+                // For episodes, use the composite key so ShowDetailViewModel.watchedEpisodeKeys
+                // stays in sync without a manual toggle.
+                val watchKey = if ((completedSeason ?: 0) > 0)
+                    "${completedImdbId}_s${completedSeason}e${completedEpisode}"
+                else completedImdbId
+                libraryRepository.markWatched(watchKey, metadata)
+            }
         }
 
         // Trakt scrobble stop

@@ -25,14 +25,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.popcorntime.android.domain.model.Episode
 import com.popcorntime.android.domain.model.Season
 import com.popcorntime.android.domain.model.Show
+import com.popcorntime.android.ui.settings.formatDownloadStatsLabel
 import java.text.SimpleDateFormat
 import java.util.*
+
+// ── Screen entry point ────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Suppress("UNUSED_PARAMETER")
@@ -41,11 +45,21 @@ fun ShowDetailScreen(
     imdbId: String,
     onBack: () -> Unit,
     onEpisodePlay: (imdbId: String, season: Int, episode: Int, quality: String) -> Unit,
+    onPlayDownloaded: (localUri: String) -> Unit = {},
     viewModel: ShowDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(state.transientMessage) {
+        state.transientMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.consumeTransientMessage()
+        }
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text(state.show?.title ?: "", maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -103,17 +117,24 @@ fun ShowDetailScreen(
                 isEpisodesLoading = state.isEpisodesLoading,
                 episodesError = state.episodesError,
                 watchedEpisodeKeys = state.watchedEpisodeKeys,
+                episodeDownloads = state.episodeDownloads,
                 modifier = Modifier.padding(padding),
                 onSeasonSelect = viewModel::selectSeason,
                 onEpisodePlay = onEpisodePlay,
                 onMarkAllWatched = viewModel::markAllWatched,
                 onToggleEpisodeWatched = viewModel::toggleEpisodeWatched,
                 onRetryEpisodes = viewModel::retryEpisodes,
+                onStartDownload = viewModel::startEpisodeDownload,
+                onCancelDownload = viewModel::cancelEpisodeDownload,
+                onPlayDownloaded = onPlayDownloaded,
             )
         }
     }
 }
 
+// ── Detail content ────────────────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ShowDetailContent(
     show: Show,
@@ -123,15 +144,51 @@ private fun ShowDetailContent(
     isEpisodesLoading: Boolean = false,
     episodesError: String? = null,
     watchedEpisodeKeys: Set<String> = emptySet(),
+    episodeDownloads: Map<String, EpisodeDownloadState> = emptyMap(),
     modifier: Modifier = Modifier,
     onSeasonSelect: (Int) -> Unit,
     onEpisodePlay: (String, Int, Int, String) -> Unit,
     onMarkAllWatched: () -> Unit = {},
     onToggleEpisodeWatched: (Episode) -> Unit = {},
     onRetryEpisodes: () -> Unit = {},
+    onStartDownload: (Episode, String) -> Unit = { _, _ -> },
+    onCancelDownload: (Episode) -> Unit = {},
+    onPlayDownloaded: (localUri: String) -> Unit = {},
 ) {
+    // Track which episode's action sheet is open (null = closed)
+    var sheetEpisode by remember { mutableStateOf<Episode?>(null) }
+
+    // Action sheet — renders as an overlay outside the LazyColumn
+    sheetEpisode?.let { episode ->
+        val epKey = "${show.imdbId}_s${episode.season}e${episode.episode}"
+        val dlState = episodeDownloads[epKey] ?: EpisodeDownloadState.NotDownloaded
+        EpisodeActionSheet(
+            show = show,
+            episode = episode,
+            downloadState = dlState,
+            onStream = { quality ->
+                sheetEpisode = null
+                onEpisodePlay(show.imdbId, episode.season, episode.episode, quality)
+            },
+            onDownload = { quality ->
+                sheetEpisode = null
+                onStartDownload(episode, quality)
+            },
+            onCancelDownload = {
+                sheetEpisode = null
+                onCancelDownload(episode)
+            },
+            onPlayDownloaded = { uri ->
+                sheetEpisode = null
+                onPlayDownloaded(uri)
+            },
+            onDismiss = { sheetEpisode = null },
+        )
+    }
+
     LazyColumn(modifier = modifier) {
-        // Hero backdrop
+
+        // ── Hero backdrop ─────────────────────────────────────────────────────
         item {
             Box(Modifier.fillMaxWidth().height(220.dp)) {
                 AsyncImage(
@@ -151,7 +208,7 @@ private fun ShowDetailContent(
             }
         }
 
-        // Meta
+        // ── Meta ──────────────────────────────────────────────────────────────
         item {
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                 Text(show.title, style = MaterialTheme.typography.titleLarge)
@@ -197,7 +254,6 @@ private fun ShowDetailContent(
                     )
                     Spacer(Modifier.height(6.dp))
                 }
-                // Genres
                 Row(modifier = Modifier.horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     show.genres.forEach { genre ->
@@ -227,22 +283,19 @@ private fun ShowDetailContent(
             }
         }
 
-        // Season tabs / loading / error
+        // ── Season tabs / loading / error ─────────────────────────────────────
         item {
             when {
                 isEpisodesLoading -> {
-                    // Shimmer season-tab row
                     val shimmer = rememberShimmerBrush()
                     Row(
-                        modifier = Modifier
-                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         repeat(3) {
                             Box(
                                 modifier = Modifier
-                                    .width(80.dp)
-                                    .height(32.dp)
+                                    .width(80.dp).height(32.dp)
                                     .clip(RoundedCornerShape(16.dp))
                                     .background(shimmer),
                             )
@@ -301,7 +354,7 @@ private fun ShowDetailContent(
             }
         }
 
-        // Skeleton episode rows while loading
+        // ── Skeleton rows while loading ───────────────────────────────────────
         if (isEpisodesLoading) {
             items(5) {
                 EpisodeRowSkeleton()
@@ -309,7 +362,7 @@ private fun ShowDetailContent(
             }
         }
 
-        // Episodes for selected season
+        // ── Episode rows ──────────────────────────────────────────────────────
         if (!isEpisodesLoading && episodesError == null) {
             val currentSeason = seasons.find { it.number == selectedSeason }
             items(currentSeason?.episodes ?: emptyList(), key = { it.tvdbId }) { episode ->
@@ -317,10 +370,9 @@ private fun ShowDetailContent(
                 EpisodeRow(
                     episode = episode,
                     isWatched = epKey in watchedEpisodeKeys,
+                    downloadState = episodeDownloads[epKey] ?: EpisodeDownloadState.NotDownloaded,
                     onToggleWatched = { onToggleEpisodeWatched(episode) },
-                    onClick = { quality ->
-                        onEpisodePlay(show.imdbId, episode.season, episode.episode, quality)
-                    },
+                    onRowClick = { sheetEpisode = episode },
                 )
                 HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
             }
@@ -330,22 +382,223 @@ private fun ShowDetailContent(
     }
 }
 
+// ── Episode action bottom sheet ───────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun EpisodeRow(
+private fun EpisodeActionSheet(
+    show: Show,
     episode: Episode,
-    isWatched: Boolean,
-    onToggleWatched: () -> Unit,
-    onClick: (quality: String) -> Unit,
+    downloadState: EpisodeDownloadState,
+    onStream: (quality: String) -> Unit,
+    onDownload: (quality: String) -> Unit,
+    onCancelDownload: () -> Unit,
+    onPlayDownloaded: (localUri: String) -> Unit,
+    onDismiss: () -> Unit,
 ) {
-    var showQualityPicker by remember { mutableStateOf(false) }
     val availableQualities = episode.torrents.keys
         .filter { it != "0" }
         .sortedByDescending { qualityRank(it) }
 
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        // Episode title header
+        Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+            Text(
+                text = "S${episode.season.toString().padStart(2, '0')}E${episode.episode.toString().padStart(2, '0')} · ${episode.title}",
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = show.title,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        if (availableQualities.isEmpty()) {
+            // No sources
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Icon(Icons.Default.CloudOff, null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp))
+                Column {
+                    Text("No sources available", style = MaterialTheme.typography.bodyMedium)
+                    Text("No torrents found for this episode",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        } else {
+            // ── Play downloaded row (if complete) ─────────────────────────────
+            if (downloadState is EpisodeDownloadState.Downloaded) {
+                SheetSectionLabel("Downloaded")
+                downloadState.localUri?.let { uri ->
+                    SheetActionRow(
+                        icon = Icons.Default.PlayCircle,
+                        iconTint = MaterialTheme.colorScheme.primary,
+                        label = "Play downloaded file",
+                        subtitle = null,
+                        onClick = { onPlayDownloaded(uri) },
+                    )
+                } ?: run {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Default.CheckCircle, null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp))
+                        Text("Downloaded", style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            }
+
+            // ── Queued / Downloading row ──────────────────────────────────────
+            if (downloadState is EpisodeDownloadState.Queued ||
+                downloadState is EpisodeDownloadState.Downloading) {
+                SheetSectionLabel("Download in progress")
+                when (downloadState) {
+                    is EpisodeDownloadState.Queued -> {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Text("Queued…", modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyMedium)
+                            TextButton(onClick = onCancelDownload) { Text("Cancel") }
+                        }
+                    }
+                    is EpisodeDownloadState.Downloading -> {
+                        Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text(
+                                    formatDownloadStatsLabel(downloadState.stats),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                TextButton(onClick = onCancelDownload) { Text("Cancel") }
+                            }
+                            LinearProgressIndicator(
+                                progress = { downloadState.stats.progress },
+                                modifier = Modifier.fillMaxWidth(),
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                    else -> Unit
+                }
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            }
+
+            // ── Stream section ────────────────────────────────────────────────
+            SheetSectionLabel("Stream")
+            availableQualities.forEach { quality ->
+                val torrent = episode.torrents[quality]
+                SheetActionRow(
+                    icon = Icons.Default.PlayArrow,
+                    iconTint = MaterialTheme.colorScheme.primary,
+                    label = quality,
+                    subtitle = torrent?.let { "↑${it.seeds} seeds · ${it.provider}" },
+                    onClick = { onStream(quality) },
+                )
+            }
+
+            // ── Download section (only if not already downloading/downloaded) ─
+            if (downloadState is EpisodeDownloadState.NotDownloaded) {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                SheetSectionLabel("Download")
+                availableQualities.forEach { quality ->
+                    val torrent = episode.torrents[quality]
+                    SheetActionRow(
+                        icon = Icons.Default.Download,
+                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        label = quality,
+                        subtitle = torrent?.let { "↑${it.seeds} seeds · ${it.provider}" },
+                        onClick = { onDownload(quality) },
+                    )
+                }
+            }
+        }
+
+        // Bottom nav bar inset
+        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
+    }
+}
+
+@Composable
+private fun SheetSectionLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+    )
+}
+
+@Composable
+private fun SheetActionRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconTint: Color,
+    label: String,
+    subtitle: String?,
+    onClick: () -> Unit,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = availableQualities.isNotEmpty()) { showQualityPicker = true }
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(22.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyMedium)
+            if (subtitle != null) {
+                Text(subtitle, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+// ── Episode row ───────────────────────────────────────────────────────────────
+
+@Composable
+private fun EpisodeRow(
+    episode: Episode,
+    isWatched: Boolean,
+    downloadState: EpisodeDownloadState,
+    onToggleWatched: () -> Unit,
+    onRowClick: () -> Unit,
+) {
+    val hasSource = episode.torrents.any { it.key != "0" }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onRowClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -407,7 +660,7 @@ private fun EpisodeRow(
             }
         }
 
-        // Action icons column
+        // Right column: watched toggle + download/play state
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -415,68 +668,65 @@ private fun EpisodeRow(
             // Watched toggle
             IconButton(onClick = onToggleWatched, modifier = Modifier.size(32.dp)) {
                 Icon(
-                    imageVector = if (isWatched) Icons.Default.CheckCircle else Icons.Default.CheckCircle,
+                    imageVector = Icons.Default.CheckCircle,
                     contentDescription = if (isWatched) "Mark unwatched" else "Mark watched",
                     tint = if (isWatched) MaterialTheme.colorScheme.primary
                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
                     modifier = Modifier.size(20.dp),
                 )
             }
-            // Play / no-source indicator
-            if (availableQualities.isNotEmpty()) {
-                Icon(Icons.Default.PlayCircle, contentDescription = "Play",
-                    tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
-            } else {
-                Icon(Icons.Default.CloudOff, contentDescription = "No torrents",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                    modifier = Modifier.size(20.dp))
+
+            // Download / play state indicator
+            when (downloadState) {
+                is EpisodeDownloadState.NotDownloaded -> {
+                    if (hasSource) {
+                        Icon(Icons.Default.PlayCircle, "Stream/download",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(28.dp))
+                    } else {
+                        Icon(Icons.Default.CloudOff, "No sources",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                            modifier = Modifier.size(20.dp))
+                    }
+                }
+                is EpisodeDownloadState.Queued -> {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                is EpisodeDownloadState.Downloading -> {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(32.dp)) {
+                        CircularProgressIndicator(
+                            progress = { downloadState.stats.progress },
+                            modifier = Modifier.size(28.dp),
+                            strokeWidth = 2.5.dp,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Text(
+                            "${(downloadState.stats.progress * 100).toInt()}",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.sp),
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+                is EpisodeDownloadState.Downloaded -> {
+                    Icon(Icons.Default.DownloadDone, "Downloaded",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp))
+                }
             }
         }
     }
-
-    if (showQualityPicker) {
-        AlertDialog(
-            onDismissRequest = { showQualityPicker = false },
-            title = { Text("Choose Quality") },
-            text = {
-                Column {
-                    availableQualities.forEach { quality ->
-                        val torrent = episode.torrents[quality]
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onClick(quality); showQualityPicker = false }
-                                .padding(vertical = 12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(quality, style = MaterialTheme.typography.bodyMedium)
-                            if (torrent != null) {
-                                Text(
-                                    "↑${torrent.seeds} ↓${torrent.peers}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { showQualityPicker = false }) { Text("Cancel") }
-            },
-        )
-    }
 }
 
-private fun qualityRank(q: String) = when (q) { "2160p" -> 4; "1080p" -> 3; "720p" -> 2; "480p" -> 1; else -> 0 }
+// ── Skeleton shimmer ──────────────────────────────────────────────────────────
 
 @Composable
 private fun rememberShimmerBrush(): Brush {
     val base = MaterialTheme.colorScheme.surfaceVariant
     val highlight = MaterialTheme.colorScheme.surface
-
     val transition = rememberInfiniteTransition(label = "shimmer")
     val offset by transition.animateFloat(
         initialValue = -600f,
@@ -504,64 +754,25 @@ private fun EpisodeRowSkeleton() {
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Thumbnail placeholder
         Box(
             modifier = Modifier
                 .size(width = 100.dp, height = 60.dp)
                 .clip(RoundedCornerShape(6.dp))
                 .background(shimmer),
         )
-        // Text placeholders
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(0.7f)
-                    .height(14.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(shimmer),
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(10.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(shimmer),
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(0.85f)
-                    .height(10.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(shimmer),
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(0.35f)
-                    .height(9.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(shimmer),
-            )
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Box(Modifier.fillMaxWidth(0.7f).height(14.dp).clip(RoundedCornerShape(4.dp)).background(shimmer))
+            Box(Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(4.dp)).background(shimmer))
+            Box(Modifier.fillMaxWidth(0.85f).height(10.dp).clip(RoundedCornerShape(4.dp)).background(shimmer))
+            Box(Modifier.fillMaxWidth(0.35f).height(9.dp).clip(RoundedCornerShape(4.dp)).background(shimmer))
         }
-        // Icon column placeholder
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(20.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(shimmer),
-            )
-            Box(
-                modifier = Modifier
-                    .size(28.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(shimmer),
-            )
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.size(20.dp).clip(RoundedCornerShape(10.dp)).background(shimmer))
+            Box(Modifier.size(28.dp).clip(RoundedCornerShape(14.dp)).background(shimmer))
         }
     }
 }
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+
+private fun qualityRank(q: String) = when (q) { "2160p" -> 4; "1080p" -> 3; "720p" -> 2; "480p" -> 1; else -> 0 }

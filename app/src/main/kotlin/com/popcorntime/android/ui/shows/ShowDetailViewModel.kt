@@ -3,7 +3,10 @@ package com.popcorntime.android.ui.shows
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.popcorntime.android.data.torrent.DownloadManager
+import com.popcorntime.android.data.torrent.DownloadStats
 import com.popcorntime.android.domain.model.ContentType
+import com.popcorntime.android.domain.model.Episode
 import com.popcorntime.android.domain.model.LibraryContentType
 import com.popcorntime.android.domain.model.LibraryItem
 import com.popcorntime.android.domain.model.Season
@@ -15,10 +18,22 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+// ── Per-episode download state ────────────────────────────────────────────────
+
+sealed class EpisodeDownloadState {
+    object NotDownloaded : EpisodeDownloadState()
+    object Queued : EpisodeDownloadState()
+    data class Downloading(val stats: DownloadStats) : EpisodeDownloadState()
+    data class Downloaded(val localUri: String?) : EpisodeDownloadState()
+}
+
+// ── UI state ──────────────────────────────────────────────────────────────────
 
 data class ShowDetailUiState(
     val show: Show? = null,
@@ -36,12 +51,19 @@ data class ShowDetailUiState(
     val allWatched: Boolean = false,
     /** Composite keys "imdbId_sXeY" for episodes the user has watched. */
     val watchedEpisodeKeys: Set<String> = emptySet(),
+    /** key = "imdbId_sXeY" → download state for that episode. */
+    val episodeDownloads: Map<String, EpisodeDownloadState> = emptyMap(),
+    /** One-shot message to surface in a snackbar (e.g. concurrent-download rejection). */
+    val transientMessage: String? = null,
 )
+
+// ── ViewModel ─────────────────────────────────────────────────────────────────
 
 @HiltViewModel
 class ShowDetailViewModel @Inject constructor(
     private val repository: ShowRepository,
     private val libraryRepository: LibraryRepository,
+    private val downloadManager: DownloadManager,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -52,10 +74,14 @@ class ShowDetailViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(ShowDetailUiState())
     val uiState: StateFlow<ShowDetailUiState> = _uiState.asStateFlow()
 
-    init { loadDetail() }
+    init {
+        loadDetail()
+        observeDownloads()
+    }
+
+    // ── Data loading ──────────────────────────────────────────────────────────
 
     private fun loadDetail() {
-        // Show cached summary immediately so the header renders without a network round-trip.
         val cached = ShowCache.get(imdbId)
         if (cached != null) {
             val seasons = cached.seasons()
@@ -106,7 +132,6 @@ class ShowDetailViewModel @Inject constructor(
                     if (_uiState.value.show == null) {
                         _uiState.update { it.copy(isLoading = false, isEpisodesLoading = false, error = e.message) }
                     } else {
-                        // Cached show is displayed — surface the error inline in the episodes section.
                         _uiState.update {
                             it.copy(
                                 isEpisodesLoading = false,
@@ -119,6 +144,37 @@ class ShowDetailViewModel @Inject constructor(
         }
     }
 
+    // ── Download observation ──────────────────────────────────────────────────
+
+    private fun observeDownloads() {
+        val episodeKeyPrefix = "${imdbId}_s"
+        viewModelScope.launch {
+            combine(
+                downloadManager.downloads,
+                downloadManager.activeDownloadStats,
+                downloadManager.activeImdbId,
+            ) { downloads, stats, activeId ->
+                Triple(downloads, stats, activeId)
+            }.collect { (downloads, stats, activeId) ->
+                val map = downloads
+                    .filter { it.imdbId.startsWith(episodeKeyPrefix) }
+                    .associate { entity ->
+                        val state: EpisodeDownloadState = when {
+                            entity.completedAt != null ->
+                                EpisodeDownloadState.Downloaded(entity.filePath)
+                            entity.imdbId == activeId && stats != null ->
+                                EpisodeDownloadState.Downloading(stats)
+                            else -> EpisodeDownloadState.Queued
+                        }
+                        entity.imdbId to state
+                    }
+                _uiState.update { it.copy(episodeDownloads = map) }
+            }
+        }
+    }
+
+    // ── Public actions ────────────────────────────────────────────────────────
+
     fun retryEpisodes() {
         _uiState.update { it.copy(isEpisodesLoading = true, episodesError = null) }
         loadDetail()
@@ -127,6 +183,34 @@ class ShowDetailViewModel @Inject constructor(
     fun selectSeason(number: Int) {
         _uiState.update { it.copy(selectedSeason = number) }
     }
+
+    fun startEpisodeDownload(episode: Episode, quality: String) {
+        val show = _uiState.value.show ?: return
+        val episodeTorrent = episode.torrents[quality] ?: return
+        val episodeKey = "${show.imdbId}_s${episode.season}e${episode.episode}"
+        val title = "${show.title} S${episode.season.toString().padStart(2, '0')}E${episode.episode.toString().padStart(2, '0')}"
+        val started = downloadManager.startDownload(
+            imdbId = episodeKey,
+            title = title,
+            magnetUrl = episodeTorrent.url,
+            quality = quality,
+        )
+        if (!started) {
+            _uiState.update { it.copy(transientMessage = "Another download is already in progress") }
+        }
+    }
+
+    fun cancelEpisodeDownload(episode: Episode) {
+        val show = _uiState.value.show ?: return
+        val episodeKey = "${show.imdbId}_s${episode.season}e${episode.episode}"
+        downloadManager.cancelDownload(episodeKey)
+    }
+
+    fun consumeTransientMessage() {
+        _uiState.update { it.copy(transientMessage = null) }
+    }
+
+    // ── Watch state ───────────────────────────────────────────────────────────
 
     fun toggleWatched() {
         viewModelScope.launch {
@@ -160,7 +244,7 @@ class ShowDetailViewModel @Inject constructor(
         }
     }
 
-    fun toggleEpisodeWatched(episode: com.popcorntime.android.domain.model.Episode) {
+    fun toggleEpisodeWatched(episode: Episode) {
         val show = _uiState.value.show ?: return
         val key = "${show.imdbId}_s${episode.season}e${episode.episode}"
         viewModelScope.launch {
@@ -198,9 +282,6 @@ class ShowDetailViewModel @Inject constructor(
                 )
                 libraryRepository.markWatched(epKey, epItem)
             }
-            // All markWatched calls above completed without throwing, so every episode is
-            // now written. Set allWatched directly rather than re-querying the DB, which
-            // may not yet reflect all writes when first() emits.
             _uiState.update { it.copy(allWatched = true) }
         }
     }

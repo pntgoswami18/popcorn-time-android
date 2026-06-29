@@ -196,6 +196,9 @@ private fun MainNavHost(navController: NavHostController, modifier: Modifier = M
                 onEpisodePlay = { _, season, episode, quality ->
                     navController.navigate("player/${Uri.encode(imdbId)}/${Uri.encode(quality)}?season=$season&episode=$episode&contentType=${Uri.encode(showContentType)}")
                 },
+                onPlayDownloaded = { uri ->
+                    navController.navigate("player_local/${Uri.encode(uri)}")
+                },
             )
         }
 
