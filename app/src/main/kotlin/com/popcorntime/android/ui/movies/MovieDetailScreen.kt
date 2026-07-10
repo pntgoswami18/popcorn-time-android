@@ -20,11 +20,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.popcorntime.android.R
 import com.popcorntime.android.domain.model.Movie
 import com.popcorntime.android.ui.settings.formatDownloadStatsLabel
 
@@ -147,6 +149,8 @@ private fun MovieDetailContent(
                 model = movie.backdropUrl.ifBlank { movie.posterUrl },
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
+                placeholder = painterResource(R.drawable.posterholder),
+                error = painterResource(R.drawable.posterholder),
                 modifier = Modifier.fillMaxSize(),
             )
             Box(

@@ -18,11 +18,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.popcorntime.android.R
 import com.popcorntime.android.domain.model.ALL_GENRES
 import com.popcorntime.android.domain.model.Movie
 import com.popcorntime.android.domain.model.SortOption
@@ -267,6 +269,8 @@ fun MovieCard(
             model = movie.posterUrl,
             contentDescription = movie.title,
             contentScale = ContentScale.Crop,
+            placeholder = painterResource(R.drawable.posterholder),
+            error = painterResource(R.drawable.posterholder),
             modifier = Modifier.fillMaxSize(),
         )
 

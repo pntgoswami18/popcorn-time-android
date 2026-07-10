@@ -15,11 +15,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.popcorntime.android.R
 import com.popcorntime.android.domain.model.LibraryContentType
 import com.popcorntime.android.domain.model.LibraryItem
 import com.popcorntime.android.ui.settings.DownloadsTabContent
@@ -152,6 +154,8 @@ private fun LibraryItemCard(
             model = item.posterUrl.ifBlank { null },
             contentDescription = item.title,
             contentScale = ContentScale.Crop,
+            placeholder = painterResource(R.drawable.posterholder),
+            error = painterResource(R.drawable.posterholder),
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(2f / 3f)

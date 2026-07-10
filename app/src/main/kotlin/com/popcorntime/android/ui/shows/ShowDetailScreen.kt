@@ -23,12 +23,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.popcorntime.android.R
 import com.popcorntime.android.domain.model.Episode
 import com.popcorntime.android.domain.model.Season
 import com.popcorntime.android.domain.model.Show
@@ -195,6 +197,8 @@ private fun ShowDetailContent(
                     model = show.backdropUrl.ifBlank { show.posterUrl },
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
+                    placeholder = painterResource(R.drawable.posterholder),
+                    error = painterResource(R.drawable.posterholder),
                     modifier = Modifier.fillMaxSize(),
                 )
                 Box(
@@ -609,6 +613,8 @@ private fun EpisodeRow(
                 model = episode.thumbnailUrl,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
+                placeholder = painterResource(R.drawable.posterholder),
+                error = painterResource(R.drawable.posterholder),
                 modifier = Modifier
                     .size(width = 100.dp, height = 60.dp)
                     .clip(RoundedCornerShape(6.dp))

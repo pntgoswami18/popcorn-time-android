@@ -15,11 +15,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.popcorntime.android.R
 import com.popcorntime.android.domain.model.ALL_GENRES
 import com.popcorntime.android.domain.model.ContentType
 import com.popcorntime.android.domain.model.Show
@@ -219,6 +221,8 @@ fun ShowCard(
             model = show.posterUrl,
             contentDescription = show.title,
             contentScale = ContentScale.Crop,
+            placeholder = painterResource(R.drawable.posterholder),
+            error = painterResource(R.drawable.posterholder),
             modifier = Modifier.fillMaxSize(),
         )
         if (isWatched) {
