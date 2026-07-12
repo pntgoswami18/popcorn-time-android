@@ -2,75 +2,110 @@ package com.popcorntime.android.data.api
 
 import com.popcorntime.android.data.api.dto.EztvResponse
 import com.popcorntime.android.data.api.dto.EztvTorrentDto
-import com.popcorntime.android.data.api.dto.TvMazeSearchResultDto
+import com.popcorntime.android.data.api.dto.ShowDto
 import com.popcorntime.android.data.api.dto.TvMazeShowDto
 import com.popcorntime.android.domain.model.ContentType
 import com.popcorntime.android.domain.model.ShowFilter
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
+import io.ktor.client.plugins.expectSuccess
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
 import timber.log.Timber
 import javax.inject.Inject
+import javax.inject.Named
 import javax.inject.Singleton
 
 /**
- * Fetches TV shows and anime using two public, maintenance-free APIs:
+ * Show/anime provider.
+ *
+ * **Browse** speaks the Butter / popcorn-ru API against the same mirror domains
+ * popcorn-desktop uses, so both apps see identical catalogs and server-side
+ * trending/sort/genre ordering:
+ *
+ *  - GET {base}shows/{page}?sort=..&order=-1&limit=50[&genre=..][&keywords=..][&anime=1]
+ *    → JSON array of show summaries (~50/page, [] = end)
+ *  - GET {base}show/{imdbId} → full show incl. episodes with embedded torrents
+ *    (used as the detail fallback when TVMaze doesn't know the show)
+ *
+ * **Detail** stays on TVMaze + EZTV: TVMaze has richer episode metadata
+ * (thumbnails, airstamps) and EZTV/Nyaa/Jackett supply fresher torrents.
  *
  *  - **TVMaze** (https://api.tvmaze.com) — show/episode metadata, free, no auth.
  *  - **EZTV** (https://eztv.re/api) — episode torrent magnet links indexed by IMDB ID.
- *
- * The old Butter/api-fetch.sh servers are permanently offline as of 2025.
  */
 @Singleton
-class ShowApiService @Inject constructor(private val client: HttpClient) {
+class ShowApiService @Inject constructor(
+    private val client: HttpClient,
+    @Named("showServers") private val servers: List<String>,
+) {
 
     companion object {
         private const val TVMAZE = "https://api.tvmaze.com"
         private const val EZTV   = "https://eztv.re"
         private const val EZTV_PAGE_LIMIT = 100
         private const val EZTV_MAX_PAGES  = 3  // up to 300 torrents per show
-    }
+        private const val PAGE_SIZE = 50
 
-    // ── List ──────────────────────────────────────────────────────────────────
-
-    /**
-     * Returns a page of shows (or anime) from TVMaze.
-     *
-     * TVMaze `/shows?page=N` is 0-indexed and returns ~250 entries per page.
-     * Our ShowFilter pages are 1-indexed, so we subtract 1.
-     *
-     * Anime = TVMaze type "Animation" or genre "Anime".
-     */
-    suspend fun listShows(filter: ShowFilter): List<TvMazeShowDto> {
-        val isAnime = filter.type == ContentType.ANIME
-        return if (filter.keywords.isNotBlank()) {
-            client.get("$TVMAZE/search/shows") {
-                parameter("q", filter.keywords)
-            }.body<List<TvMazeSearchResultDto>>()
-                .map { it.show }
-                .filter { if (isAnime) it.isAnimation() else !it.isAnimation() }
-        } else {
-            val tvmazePage = (filter.page - 1).coerceAtLeast(0)
-            client.get("$TVMAZE/shows") {
-                parameter("page", tvmazePage)
-            }.body<List<TvMazeShowDto>>()
-                .filter { if (isAnime) it.isAnimation() else !it.isAnimation() }
-                .let { shows ->
-                    if (filter.genre != "All Genre")
-                        shows.filter { filter.genre in it.genres }
-                    else shows
-                }
+        /**
+         * Maps a UI sort value to a Butter shows sort. Mirrors popcorn-desktop's
+         * tv.js: "popularity" is deliberately sent as the API default "seeds"
+         * (verified live: both produce identical ordering).
+         */
+        fun toButterShowSort(sortBy: String): String = when (sortBy.lowercase()) {
+            "trending"   -> "trending"
+            "popularity" -> "seeds"
+            "updated"    -> "updated"
+            "rating"     -> "rating"
+            "year"       -> "year"
+            else         -> "trending"
         }
     }
 
-    // ── Detail ────────────────────────────────────────────────────────────────
+    // Rotate through mirrors on failure — same semantics as popcorn-desktop
+    private val rotation = ServerRotation(servers)
+
+    // ── Browse (popcorn-ru mirrors) ───────────────────────────────────────────
+
+    /**
+     * Returns a page of shows (or anime) from the popcorn-ru mirrors.
+     *
+     * Genre is only meaningful for shows — the anime catalog has no genre
+     * filter (matching popcorn-desktop). Search uses the same endpoint via
+     * the `keywords` param.
+     */
+    suspend fun listShows(filter: ShowFilter): List<ShowDto> = rotation.withRotation { base ->
+        client.get("${base}shows/${filter.page}") {
+            expectSuccess = true
+            parameter("sort", toButterShowSort(filter.sortBy))
+            parameter("order", filter.order)
+            parameter("limit", PAGE_SIZE)
+            if (filter.type == ContentType.ANIME) {
+                parameter("anime", 1)
+            } else if (filter.genre != "All Genre") {
+                parameter("genre", filter.genre.lowercase())
+            }
+            if (filter.keywords.isNotBlank()) parameter("keywords", filter.keywords.trim())
+        }.body()
+    }
+
+    /**
+     * Full show detail (episodes + embedded torrents) from the popcorn-ru
+     * mirrors — the fallback source when TVMaze doesn't know the show.
+     */
+    suspend fun getButterShowDetail(imdbId: String): ShowDto = rotation.withRotation { base ->
+        client.get("${base}show/$imdbId") {
+            expectSuccess = true
+        }.body()
+    }
+
+    // ── Detail (TVMaze + EZTV) ────────────────────────────────────────────────
 
     /**
      * Returns the full show record (with episodes embedded) from TVMaze, plus
      * a flat list of EZTV torrents for that show's IMDB ID.
      */
-    suspend fun getShowDetail(imdbId: String, type: ContentType): ShowDetailResult {
+    suspend fun getShowDetail(imdbId: String): ShowDetailResult {
         val show = lookupShow(imdbId)
         val eztvTorrents = fetchEztvTorrents(show.externals?.imdb ?: imdbId)
         return ShowDetailResult(show, eztvTorrents)
@@ -80,7 +115,7 @@ class ShowApiService @Inject constructor(private val client: HttpClient) {
 
     private suspend fun lookupShow(imdbId: String): TvMazeShowDto {
         val base: TvMazeShowDto = if (imdbId.startsWith("tvmaze:")) {
-            // Synthetic ID we generated for shows that had no IMDB entry
+            // Synthetic ID from an old build's TVMaze browse (kept for legacy library items)
             val tvId = imdbId.removePrefix("tvmaze:")
             client.get("$TVMAZE/shows/$tvId").body()
         } else {
@@ -120,10 +155,3 @@ data class ShowDetailResult(
     val show: TvMazeShowDto,
     val eztvTorrents: List<EztvTorrentDto>,
 )
-
-// ── Extension helper ──────────────────────────────────────────────────────────
-
-internal fun TvMazeShowDto.isAnimation(): Boolean =
-    type.equals("Animation", ignoreCase = true) ||
-    genres.any { it.equals("Anime", ignoreCase = true) ||
-                 it.equals("Animation", ignoreCase = true) }

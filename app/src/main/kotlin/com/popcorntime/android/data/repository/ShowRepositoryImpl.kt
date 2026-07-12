@@ -6,8 +6,9 @@ import com.popcorntime.android.data.api.ShowApiService
 import com.popcorntime.android.data.api.ShowDetailResult
 import com.popcorntime.android.data.api.dto.EztvTorrentDto
 import com.popcorntime.android.data.api.dto.TvMazeEpisodeDto
-import com.popcorntime.android.data.api.dto.TvMazeShowDto
+import com.popcorntime.android.data.api.toDetailDomain
 import com.popcorntime.android.data.api.toEpisodeTorrent
+import com.popcorntime.android.data.api.toSummaryDomain
 import com.popcorntime.android.data.db.dao.BookmarkedDao
 import com.popcorntime.android.data.db.dao.WatchedDao
 import com.popcorntime.android.data.db.entity.BookmarkedEntity
@@ -41,7 +42,8 @@ class ShowRepositoryImpl @Inject constructor(
 
     override suspend fun getShows(filter: ShowFilter): Result<List<Show>> {
         return try {
-            Result.success(api.listShows(filter).map { it.toSummaryDomain() })
+            val isAnime = filter.type == ContentType.ANIME
+            Result.success(api.listShows(filter).map { it.toSummaryDomain(isAnime) })
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -51,7 +53,7 @@ class ShowRepositoryImpl @Inject constructor(
 
     override suspend fun getShowDetail(imdbId: String, type: ContentType): Result<Show> {
         return try {
-            val result = api.getShowDetail(imdbId, type)
+            val result = api.getShowDetail(imdbId)
             if (sourcePrefs.getShowSource() == TorrentSource.JACKETT) {
                 val baseUrl = sourcePrefs.getJackettUrl()
                 val apiKey = sourcePrefs.getJackettApiKey()
@@ -128,7 +130,17 @@ class ShowRepositoryImpl @Inject constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Result.failure(e)
+            // TVMaze doesn't know this show (mostly deep-catalog anime from the
+            // popcorn browse) — fall back to the mirrors' own detail endpoint,
+            // which carries episodes with embedded torrents (no thumbnails).
+            Timber.w(e, "ShowRepositoryImpl: TVMaze detail failed for $imdbId, trying popcorn mirrors")
+            try {
+                Result.success(api.getButterShowDetail(imdbId).toDetailDomain(type == ContentType.ANIME))
+            } catch (e2: CancellationException) {
+                throw e2
+            } catch (e2: Exception) {
+                Result.failure(e2)
+            }
         }
     }
 
@@ -150,32 +162,6 @@ class ShowRepositoryImpl @Inject constructor(
 }
 
 // ── Mappers ───────────────────────────────────────────────────────────────────
-
-/**
- * Lightweight summary used by the browse grid — no episodes, no EZTV lookup.
- * Uses TVMaze ID as synthetic IMDB for shows that lack one (rare).
- */
-private fun TvMazeShowDto.toSummaryDomain() = Show(
-    imdbId     = externals?.imdb ?: "tvmaze:$id",
-    tvdbId     = externals?.thetvdb?.toString() ?: "",
-    title      = name,
-    year       = premiered?.take(4) ?: "",
-    slug       = name.slugify(),
-    synopsis   = summary?.stripHtml() ?: "",
-    runtime    = runtime?.toString() ?: averageRuntime?.toString() ?: "",
-    country    = network?.country?.name ?: webChannel?.country?.name ?: "",
-    network    = network?.name ?: webChannel?.name ?: "",
-    airDay     = "",
-    airTime    = "",
-    status     = status,
-    numSeasons = 0,
-    rating     = rating.average ?: 0.0,
-    genres     = genres,
-    posterUrl  = image?.original ?: image?.medium ?: "",
-    backdropUrl = image?.original ?: "",
-    bannerUrl  = image?.medium ?: "",
-    episodes   = emptyList(),
-)
 
 /** Full detail mapping including EZTV episode torrents (or a pre-built index from Jackett). */
 private fun ShowDetailResult.toDomain(

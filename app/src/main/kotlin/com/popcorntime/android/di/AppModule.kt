@@ -24,10 +24,24 @@ object AppModule {
         "https://yts.bz/",
     )
 
+    // Same mirrors minus yts.bz, which is a movies-only API and does not answer
+    // shows/ requests at all (connection failure — verified live).
+    private val DEFAULT_SHOW_SERVERS = listOf(
+        "https://fusme.link/",
+        "https://jfper.link/",
+        "https://uxert.link/",
+        "https://yrkde.link/",
+    )
+
     @Provides
     @Singleton
     @Named("movieServers")
     fun provideMovieServers(): List<@JvmSuppressWildcards String> = DEFAULT_MOVIE_SERVERS
+
+    @Provides
+    @Singleton
+    @Named("showServers")
+    fun provideShowServers(): List<@JvmSuppressWildcards String> = DEFAULT_SHOW_SERVERS
 
     @Provides
     @Singleton

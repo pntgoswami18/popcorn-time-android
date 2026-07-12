@@ -22,8 +22,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.popcorntime.android.R
-import com.popcorntime.android.domain.model.ALL_GENRES
 import com.popcorntime.android.domain.model.ContentType
+import com.popcorntime.android.domain.model.SHOW_GENRES
 import com.popcorntime.android.domain.model.Show
 
 val SHOW_SORT_OPTIONS = listOf("trending", "popularity", "updated", "rating", "year")
@@ -73,6 +73,8 @@ fun ShowBrowserScreen(
             ShowFilterBar(
                 selectedGenre = state.selectedGenre,
                 selectedSort = state.selectedSort,
+                // The popcorn anime catalog has no genre filter (matches desktop)
+                showGenre = contentType == ContentType.SHOW,
                 onGenreSelect = viewModel::onGenreSelect,
                 onSortSelect = viewModel::onSortSelect,
             )
@@ -105,6 +107,7 @@ fun ShowBrowserScreen(
 private fun ShowFilterBar(
     selectedGenre: String,
     selectedSort: String,
+    showGenre: Boolean,
     onGenreSelect: (String) -> Unit,
     onSortSelect: (String) -> Unit,
 ) {
@@ -115,14 +118,14 @@ private fun ShowFilterBar(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Box {
+        if (showGenre) Box {
             FilterChip(
                 selected = selectedGenre != "All Genre",
                 onClick = { genreExpanded = true },
                 label = { Text(selectedGenre, maxLines = 1) },
             )
             DropdownMenu(expanded = genreExpanded, onDismissRequest = { genreExpanded = false }) {
-                ALL_GENRES.forEach { genre ->
+                SHOW_GENRES.forEach { genre ->
                     DropdownMenuItem(
                         text = { Text(genre) },
                         onClick = { onGenreSelect(genre); genreExpanded = false },

@@ -64,3 +64,13 @@ data class ShowFilter(
 )
 
 enum class ContentType { SHOW, ANIME }
+
+/**
+ * TV genres served by the popcorn-ru shows API (from its shows/stat endpoint).
+ * Sent lowercase as the `genre=` param; the API matches case-insensitively.
+ */
+val SHOW_GENRES = listOf(
+    "All Genre", "Action & Adventure", "Animation", "Comedy", "Crime",
+    "Documentary", "Drama", "Family", "Kids", "Mystery", "News", "Reality",
+    "Sci-Fi & Fantasy", "Soap", "Talk", "War & Politics", "Western",
+)

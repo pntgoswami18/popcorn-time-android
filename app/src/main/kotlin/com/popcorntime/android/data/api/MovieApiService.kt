@@ -7,9 +7,6 @@ import io.ktor.client.call.body
 import io.ktor.client.plugins.expectSuccess
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
@@ -27,10 +24,9 @@ class MovieApiService @Inject constructor(
     @Named("movieServers") private val servers: List<String>,
 ) {
     // Rotate through servers on failure — mirrors butter-provider/generic.js setApiUrls + shuffle
-    private val serverQueue = ArrayDeque(servers.shuffled())
-    private val serverMutex = Mutex()
+    private val rotation = ServerRotation(servers)
 
-    suspend fun listMovies(filter: MovieFilter): List<ButterMovieDto> = withRotation { base ->
+    suspend fun listMovies(filter: MovieFilter): List<ButterMovieDto> = rotation.withRotation { base ->
         client.get("${base}movies/${filter.page}") {
             expectSuccess = true
             parameter("sort", toButterSort(filter.sortBy))
@@ -40,44 +36,10 @@ class MovieApiService @Inject constructor(
         }.body()
     }
 
-    suspend fun getMovieByImdbId(imdbId: String): ButterMovieDto = withRotation { base ->
+    suspend fun getMovieByImdbId(imdbId: String): ButterMovieDto = rotation.withRotation { base ->
         client.get("${base}movie/$imdbId") {
             expectSuccess = true
         }.body()
-    }
-
-    /**
-     * Runs [block] against each server in queue order until one succeeds; failed
-     * servers are demoted to the back, the working one is promoted to the head.
-     *
-     * The mutex only guards the queue snapshot and reordering — never the HTTP
-     * request itself — so concurrent browse/search/detail calls don't serialize
-     * (and a dead mirror's timeout doesn't block every other request).
-     */
-    private suspend fun <T> withRotation(block: suspend (base: String) -> T): T {
-        val order = serverMutex.withLock { serverQueue.toList() }
-        val errors = mutableListOf<Throwable>()
-        for (base in order) {
-            try {
-                val result = block(base)
-                // On success, promote this server to head
-                serverMutex.withLock {
-                    serverQueue.remove(base)
-                    serverQueue.addFirst(base)
-                }
-                return result
-            } catch (e: Exception) {
-                if (e is kotlinx.serialization.SerializationException) throw e
-                Timber.w(e, "Server $base failed, rotating")
-                errors += e
-                // Rotate — move failed server to the back
-                serverMutex.withLock {
-                    serverQueue.remove(base)
-                    serverQueue.addLast(base)
-                }
-            }
-        }
-        throw errors.lastOrNull() ?: IllegalStateException("No servers configured")
     }
 
     companion object {
